@@ -380,129 +380,61 @@ async def get_ticket(ticket_id: int):
         response = await client.get(url, headers=headers)
         return response.json()
 
-@mcp.tool()
-async def build_search_query(
-    conditions: List[Dict[str, Any]],
-    operator: str = "AND"
-) -> Dict[str, str]:
+def build_search_query(field: str, value: Union[str, int, bool, None], operator: str = "=") -> str:
     """
-    Build a valid search query for Freshdesk tickets.
+    Build a properly formatted search query part for Freshdesk API.
 
     Args:
-        conditions: List of condition dictionaries, each with:
-            - field: The ticket field name (supported fields include: 'tag', 'status', 'priority', 'type', 'requester', 'responder', 'group', 'due_by', 'created_at', 'updated_at')
-            - value: The value to search for
-            - comparator: Optional comparator (default is ':'), can be ':', ':<', ':>', etc.
-        operator: The operator to join conditions ('AND' or 'OR')
+        field: The field name to search on
+        value: The value to search for
+        operator: The operator to use (default "=", which is implied in Freshdesk's syntax)
+                 Can also be ">", "<", ">=" (as ":>"), "<=" (as ":<")
 
     Returns:
-        A dictionary with the formatted query string ready to use with search_tickets
-
-    Example:
-        build_search_query([
-            {"field": "status", "value": 2},
-            {"field": "priority", "value": 3}
-        ])
-        # Returns: {"query": "status:2 AND priority:3"}
+        A properly formatted query part (field:value or field:'value' for strings)
     """
-    # Validate operator
-    if operator not in ["AND", "OR"]:
-        raise ValueError("Operator must be 'AND' or 'OR'")
+    if value is None:
+        return f"{field}:null"
 
-    # Set of supported fields by Freshdesk ticket search API
-    supported_fields = {
-        'tag', 'status', 'priority', 'type', 'requester', 'responder',
-        'group', 'due_by', 'created_at', 'updated_at', 'fr_due_by',
-        'created_date', 'updated_date', 'notes', 'description'
-    }
+    # Convert operator to Freshdesk syntax
+    op = ""
+    if operator == ">=" or operator == ":>":
+        op = ":>"
+    elif operator == "<=" or operator == ":<":
+        op = ":<"
+    elif operator == ">" or operator == "<":
+        op = f":{operator}"
 
-    query_parts = []
+    # Format value according to its type
+    if isinstance(value, str):
+        # Use single quotes for string values
+        return f"{field}{op}:'{value}'"
+    else:
+        # No quotes for numeric, boolean
+        return f"{field}{op}:{value}"
 
-    for condition in conditions:
-        field = condition.get("field")
-        value = condition.get("value")
-        comparator = condition.get("comparator", ":")
-
-        if not field or value is None:
-            raise ValueError("Each condition must have 'field' and 'value'")
-
-        if field.lower() not in supported_fields:
-            raise ValueError(f"Unsupported field: {field}. Supported fields are: {', '.join(supported_fields)}")
-
-        # Format value based on type
-        if isinstance(value, str):
-            formatted_value = f"'{value}'"
-        else:
-            formatted_value = str(value)
-
-        # Build query part
-        query_parts.append(f"{field}{comparator}{formatted_value}")
-
-    # Join with the specified operator
-    query_string = f" {operator} ".join(query_parts)
-
-    return {"query": query_string}
-
-@mcp.tool()
-async def build_complex_search_query(
-    condition_groups: List[Dict[str, Any]],
-    group_operator: str = "AND"
-) -> Dict[str, str]:
+def build_complex_search_query(*parts, operator: str = "AND") -> str:
     """
-    Build a complex search query for Freshdesk tickets with nested condition groups.
+    Build a complex search query from multiple parts.
 
     Args:
-        condition_groups: List of condition groups, each with:
-            - conditions: List of condition dictionaries (same as in build_search_query)
-            - operator: Operator to join conditions within this group ('AND' or 'OR')
-        group_operator: The operator to join the groups ('AND' or 'OR')
+        *parts: Multiple query parts
+        operator: The operator to join parts with ("AND" or "OR")
 
     Returns:
-        A dictionary with the formatted complex query string
-
-    Example:
-        build_complex_search_query([
-            {
-                "conditions": [
-                    {"field": "status", "value": 2},
-                    {"field": "priority", "value": 3}
-                ],
-                "operator": "AND"
-            },
-            {
-                "conditions": [
-                    {"field": "tag", "value": "urgent"},
-                    {"field": "group", "value": 7}
-                ],
-                "operator": "OR"
-            }
-        ])
-        # Returns: {"query": "(status:2 AND priority:3) AND (tag:'urgent' OR group:7)"}
+        A properly formatted complex query with the parts joined by the specified operator
     """
-    # Validate group operator
-    if group_operator not in ["AND", "OR"]:
-        raise ValueError("Group operator must be 'AND' or 'OR'")
+    if not parts:
+        return ""
 
-    group_queries = []
+    # Join parts with the specified operator
+    joined_parts = f" {operator} ".join(parts)
 
-    for group in condition_groups:
-        conditions = group.get("conditions", [])
-        operator = group.get("operator", "AND")
+    # If there's more than one part, wrap in parentheses
+    if len(parts) > 1:
+        return f"({joined_parts})"
 
-        if not conditions:
-            continue
-
-        # Build query for this group
-        group_query = await build_search_query(conditions, operator)
-        group_query_str = group_query["query"]
-
-        # Add parentheses around the group
-        group_queries.append(f"({group_query_str})")
-
-    # Join groups with the specified operator
-    final_query = f" {group_operator} ".join(group_queries)
-
-    return {"query": final_query}
+    return joined_parts
 
 @mcp.tool()
 async def search_tickets(query: str) -> Dict[str, Any]:
@@ -511,17 +443,30 @@ async def search_tickets(query: str) -> Dict[str, Any]:
 
     The query must follow Freshdesk's syntax requirements:
     - Format: "field_name:value AND/OR field_name:'value'"
-    - Supported fields include: tag, status, priority, type, requester,
-      responder, group, due_by, created_at, updated_at
+    - Supported fields include: tag, status, priority, type, agent_id,
+      group_id, created_at, updated_at, due_by, fr_due_by, and custom fields (cf_*)
     - Examples:
       - "status:2" (open tickets)
       - "priority:3 AND status:2" (high priority open tickets)
       - "tag:'urgent'" (tickets tagged as urgent)
+      - "created_at:>'2023-01-01'" (tickets created after Jan 1, 2023)
     """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
     headers = {
         "Content-Type": "application/json",
     }
+
+    # Ensure query is properly enclosed in double quotes if not already
+    # Check if the query follows the required format (field:value pattern)
+    # For free text search, we need to use description or notes fields
+    if ":" not in query:
+        # For plain text searches, convert to a description search or subject search
+        # Using OR to search in both fields for better results
+        query = f'(description:"{query}" OR subject:"{query}")'
+
+    # Ensure query is properly enclosed in double quotes if not already
+    if not query.startswith('"') and not query.endswith('"'):
+        query = f'"{query}"'
 
     # Freshdesk expects the query to be URI encoded
     params = {"query": query}
@@ -539,10 +484,18 @@ async def search_tickets(query: str) -> Dict[str, Any]:
         except:
             pass
 
+        # Provide more helpful error messages based on common issues
         error_message = f"Search query error: {str(e)}"
+        helpful_tip = ""
+
+        if e.response.status_code == 400:
+            if "invalid" in str(error_details).lower():
+                helpful_tip = "\nTip: Ensure your query follows the format 'field:value' and string values are in single quotes. Use the search_tickets_help prompt for examples."
+
         return {
-            "error": error_message,
-            "details": error_details
+            "error": error_message + helpful_tip,
+            "details": error_details,
+            "query_sent": query  # Include the actual query sent for debugging
         }
     except Exception as e:
         return {"error": f"Search query failed: {str(e)}"}
@@ -1336,96 +1289,60 @@ async def list_company_fields() -> List[Dict[str, Any]]:
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
 @mcp.prompt()
-def search_tickets_help() -> str:
-    """Provide guidance on how to search for tickets in Freshdesk"""
+async def search_tickets_help() -> str:
+    """
+    Provides detailed help on Freshdesk's search query syntax.
+    """
     return """
-# Freshdesk Ticket Search Guide
+    # Freshdesk Search Ticket Syntax
 
-The Freshdesk ticket search API requires a specific query format to work correctly.
+    Freshdesk search queries must follow this format:
+    `"field_name:value AND/OR field_name:'value'"`
 
-## Search Query Format
+    ## Key requirements:
 
-Freshdesk search queries follow this syntax:
-```
-field_name:value [AND/OR] field_name:'string_value'
-```
+    1. Queries must be enclosed in double quotes at the outermost level
+    2. String values must be enclosed in single quotes
+    3. Numeric values should not have quotes
+    4. Boolean values should be true or false without quotes
+    5. Logical operators (AND, OR) must be uppercase
+    6. Parentheses can be used to group conditions
+    7. Spaces are required between different conditions and operators
 
-## Supported Search Fields
+    ## Valid query examples:
 
-Freshdesk ticket search API supports a limited set of fields. Using fields not in this list will result in an "invalid_field" error:
+    - Priority High: `"priority:3"`
+    - Status Open: `"status:2"`
+    - Type Question: `"type:'Question'"`
+    - Created after date: `"created_at:>'2023-01-01'"`
+    - Tags: `"tag:'urgent'"`
+    - Custom field: `"cf_department:'Engineering'"`
+    - Multiple conditions: `"priority:3 AND status:2"`
+    - Complex query: `"(status:2 OR status:3) AND priority:4"`
 
-- `tag`: Search by ticket tags (e.g., `tag:'urgent'`)
-- `status`: Ticket status (2=Open, 3=Pending, 4=Resolved, 5=Closed)
-- `priority`: Ticket priority (1=Low, 2=Medium, 3=High, 4=Urgent)
-- `type`: Type of the ticket
-- `requester`: Email of the requester
-- `responder`: Agent assigned to the ticket
-- `group`: Group assigned to the ticket
-- `due_by`: Due date of the ticket
-- `created_at`: Ticket creation date
-- `updated_at`: Ticket last updated date
-- `fr_due_by`: First response due by date
-- `created_date`: Alternative for created_at
-- `updated_date`: Alternative for updated_at
-- `notes`: Search in ticket notes
-- `description`: Search in ticket description
+    ## Common status, priority and type values:
 
-## Query Formatting Tips
+    ### Status:
+    - 2: Open
+    - 3: Pending
+    - 4: Resolved
+    - 5: Closed
+    - 6: Waiting on Customer
+    - 7: Waiting on Third Party
 
-- String values should be enclosed in single quotes: `tag:'urgent'`
-- Numbers do not need quotes: `status:2`
-- Date fields can use comparators like `>` or `<`: `created_at:>'2023-01-01'`
-- Spaces are required between conditions and operators: `status:2 AND priority:3`
-- For complex queries, use parentheses: `(status:2 OR status:3) AND priority:4`
+    ### Priority:
+    - 1: Low
+    - 2: Medium
+    - 3: High
+    - 4: Urgent
 
-## Search Examples
-
-```python
-# Search by tags
-search_tickets("tag:'Auth0'")
-
-# Search by status
-search_tickets("status:2")  # Open tickets
-
-# Search by priority and status
-search_tickets("priority:3 AND status:2")  # High priority open tickets
-
-# Search by creation date
-search_tickets("created_at:>'2023-01-01'")  # Tickets created after Jan 1, 2023
-```
-
-## Using Helper Functions
-
-Helper functions are available to construct valid search queries:
-
-```python
-# Using build_search_query for simple queries
-query = await build_search_query([
-    {"field": "status", "value": 2},
-    {"field": "priority", "value": 3}
-])
-# Returns: {"query": "status:2 AND priority:3"}
-
-# Using build_complex_search_query for complex queries
-complex_query = await build_complex_search_query([
-    {
-        "conditions": [
-            {"field": "status", "value": 2},
-            {"field": "status", "value": 3}
-        ],
-        "operator": "OR"
-    },
-    {
-        "conditions": [
-            {"field": "priority", "value": 3},
-            {"field": "priority", "value": 4}
-        ],
-        "operator": "OR"
-    }
-])
-# Returns: {"query": "(status:2 AND priority:3) OR (tag:'urgent')"}
-```
-"""
+    ### Type:
+    - 'Question'
+    - 'Incident'
+    - 'Problem'
+    - 'Feature Request'
+    - 'Refund'
+    """
 
 def main():
     logging.info("Starting Freshdesk MCP server")
