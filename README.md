@@ -8,6 +8,7 @@ An MCP server implementation that integrates with Freshdesk, enabling AI models 
 - **Freshdesk Integration**: Seamless interaction with Freshdesk API endpoints
 - **AI Model Support**: Enables AI models to perform support operations through Freshdesk
 - **Automated Ticket Management**: Handle ticket creation, updates, and responses
+- **Advanced Search Capabilities**: Comprehensive ticket search with helper functions for complex queries
 
 ## Components
 
@@ -15,136 +16,91 @@ An MCP server implementation that integrates with Freshdesk, enabling AI models 
 
 The server offers several tools for Freshdesk operations:
 
-- `create_ticket`: Create new support tickets
-  - **Inputs**:
-    - `subject` (string, required): Ticket subject
-    - `description` (string, required): Ticket description
-    - `source` (number, required): Ticket source code
-    - `priority` (number, required): Ticket priority level
-    - `status` (number, required): Ticket status code
-    - `email` (string, optional): Email of the requester
-    - `requester_id` (number, optional): ID of the requester
-    - `custom_fields` (object, optional): Custom fields to set on the ticket
-    - `additional_fields` (object, optional): Additional top-level fields
+- `create_ticket`: Create new tickets in Freshdesk
+- `get_ticket`: Retrieve detailed information about a specific ticket
+- `update_ticket`: Update ticket properties and fields
+- `get_ticket_conversation`: Retrieve the conversation thread for a ticket
+- `update_ticket_conversation`: Add notes or replies to ticket conversations
+- `search_tickets`: Search for tickets using Freshdesk's query syntax
 
-- `update_ticket`: Update existing tickets
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket to update
-    - `ticket_fields` (object, required): Fields to update
+### Ticket Search Functionality
 
-- `delete_ticket`: Delete a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket to delete
+The ticket search functionality allows searching for Freshdesk tickets using specific query syntax:
 
-- `search_tickets`: Search for tickets based on criteria
-  - **Inputs**:
-    - `query` (string, required): Search query string
+#### Valid Search Fields
 
-- `get_ticket_fields`: Get all ticket fields
-  - **Inputs**:
-    - None
+Freshdesk ticket search API supports only a limited set of search fields:
 
-- `get_tickets`: Get all tickets
-  - **Inputs**:
-    - `page` (number, optional): Page number to fetch
-    - `per_page` (number, optional): Number of tickets per page
+- `tag`: Search by ticket tags
+- `status`: Ticket status (e.g., 2=Open, 3=Pending, 4=Resolved, 5=Closed)
+- `priority`: Ticket priority (1=Low, 2=Medium, 3=High, 4=Urgent)
+- `type`: Type of the ticket (e.g., Problem, Question, etc.)
+- `requester`: Email of the requester
+- `responder`: Agent assigned to the ticket
+- `group`: Group assigned to the ticket
+- `due_by`: Due date of the ticket
+- `created_at`: Ticket creation date
+- `updated_at`: Ticket last updated date
+- `fr_due_by`: First response due by date
+- `created_date`: Alternative for created_at
+- `updated_date`: Alternative for updated_at
+- `notes`: Search in ticket notes
+- `description`: Search in ticket description
 
-- `get_ticket`: Get a single ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket to get
+#### Search Helper Functions
 
-- `get_ticket_conversation`: Get conversation for a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
+For convenient search query construction, the following helper functions are provided:
 
-- `create_ticket_reply`: Reply to a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
-    - `body` (string, required): Content of the reply
+- `build_search_query`: Constructs a valid Freshdesk search query from a list of condition dictionaries
+- `build_complex_search_query`: Constructs complex search queries with nested condition groups
 
-- `create_ticket_note`: Add a note to a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
-    - `body` (string, required): Content of the note
+#### Example Usage
 
-- `update_ticket_conversation`: Update a conversation
-  - **Inputs**:
-    - `conversation_id` (number, required): ID of the conversation
-    - `body` (string, required): Updated content
+```python
+# Simple search for open tickets
+search_tickets("status:2")
 
-- `view_ticket_summary`: Get the summary of a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
+# Search for high priority open tickets
+search_tickets("priority:3 AND status:2")
 
-- `update_ticket_summary`: Update the summary of a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
-    - `body` (string, required): New summary content
+# Search for tickets with a specific tag
+search_tickets("tag:'urgent'")
 
-- `delete_ticket_summary`: Delete the summary of a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
+# Using the helper function to build a query
+query_result = await build_search_query([
+    {"field": "status", "value": 2},
+    {"field": "priority", "value": 3}
+])
+search_result = await search_tickets(query_result["query"])
+```
 
-- `get_agents`: Get all agents
-  - **Inputs**:
-    - `page` (number, optional): Page number
-    - `per_page` (number, optional): Number of agents per page
+## Configuration
 
-- `view_agent`: Get a single agent
-  - **Inputs**:
-    - `agent_id` (number, required): ID of the agent
+To use this server, you'll need:
 
-- `create_agent`: Create a new agent
-  - **Inputs**:
-    - `agent_fields` (object, required): Agent details
+1. A Freshdesk account
+2. Freshdesk API key
+3. Freshdesk domain
 
-- `update_agent`: Update an agent
-  - **Inputs**:
-    - `agent_id` (number, required): ID of the agent
-    - `agent_fields` (object, required): Fields to update
+Set the following environment variables:
+- `FRESHDESK_API_KEY`: Your Freshdesk API key
+- `FRESHDESK_DOMAIN`: Your Freshdesk domain (e.g., `company.freshdesk.com`)
 
-- `search_agents`: Search for agents
-  - **Inputs**:
-    - `query` (string, required): Search query
+## Development
 
-- `list_contacts`: Get all contacts
-  - **Inputs**:
-    - `page` (number, optional): Page number
-    - `per_page` (number, optional): Contacts per page
+### Setup
 
-- `get_contact`: Get a single contact
-  - **Inputs**:
-    - `contact_id` (number, required): ID of the contact
+1. Clone the repository
+2. Install dependencies
+3. Set up environment variables for Freshdesk
 
-- `search_contacts`: Search for contacts
-  - **Inputs**:
-    - `query` (string, required): Search query
+### Testing
 
-- `update_contact`: Update a contact
-  - **Inputs**:
-    - `contact_id` (number, required): ID of the contact
-    - `contact_fields` (object, required): Fields to update
+Run the test scripts to verify functionality:
 
-- `list_companies`: Get all companies
-  - **Inputs**:
-    - `page` (number, optional): Page number
-    - `per_page` (number, optional): Companies per page
-
-- `view_company`: Get a single company
-  - **Inputs**:
-    - `company_id` (number, required): ID of the company
-
-- `search_companies`: Search for companies
-  - **Inputs**:
-    - `query` (string, required): Search query
-
-- `find_company_by_name`: Find a company by name
-  - **Inputs**:
-    - `name` (string, required): Company name
-
-- `list_company_fields`: Get all company fields
-  - **Inputs**:
-    - None
+```bash
+python -m tests.test_search_functions
+```
 
 ## Getting Started
 
@@ -199,7 +155,8 @@ Once configured, you can ask Claude to perform operations like:
 - "Update the status of ticket #12345 to 'Resolved'"
 - "List all high-priority tickets assigned to the agent John Doe"
 - "List previous tickets of customer A101 in last 30 days"
-
+- "Find all open tickets with high or urgent priority created after January 1st" (using the new search functionality)
+- "Search for tickets with the tag 'billing' that are in pending status"
 
 ## Testing
 
@@ -215,6 +172,7 @@ uvx freshdesk-mcp --env FRESHDESK_API_KEY=<your_api_key> --env FRESHDESK_DOMAIN=
 - Ensure proper network connectivity to Freshdesk servers
 - Check API rate limits and quotas
 - Verify the `uvx` command is available in your PATH
+- For search query issues, use the helper functions or refer to the search syntax examples
 
 ## License
 

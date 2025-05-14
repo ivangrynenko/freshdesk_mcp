@@ -381,16 +381,171 @@ async def get_ticket(ticket_id: int):
         return response.json()
 
 @mcp.tool()
+async def build_search_query(
+    conditions: List[Dict[str, Any]],
+    operator: str = "AND"
+) -> Dict[str, str]:
+    """
+    Build a valid search query for Freshdesk tickets.
+
+    Args:
+        conditions: List of condition dictionaries, each with:
+            - field: The ticket field name (supported fields include: 'tag', 'status', 'priority', 'type', 'requester', 'responder', 'group', 'due_by', 'created_at', 'updated_at')
+            - value: The value to search for
+            - comparator: Optional comparator (default is ':'), can be ':', ':<', ':>', etc.
+        operator: The operator to join conditions ('AND' or 'OR')
+
+    Returns:
+        A dictionary with the formatted query string ready to use with search_tickets
+
+    Example:
+        build_search_query([
+            {"field": "status", "value": 2},
+            {"field": "priority", "value": 3}
+        ])
+        # Returns: {"query": "status:2 AND priority:3"}
+    """
+    # Validate operator
+    if operator not in ["AND", "OR"]:
+        raise ValueError("Operator must be 'AND' or 'OR'")
+
+    # Set of supported fields by Freshdesk ticket search API
+    supported_fields = {
+        'tag', 'status', 'priority', 'type', 'requester', 'responder',
+        'group', 'due_by', 'created_at', 'updated_at', 'fr_due_by',
+        'created_date', 'updated_date', 'notes', 'description'
+    }
+
+    query_parts = []
+
+    for condition in conditions:
+        field = condition.get("field")
+        value = condition.get("value")
+        comparator = condition.get("comparator", ":")
+
+        if not field or value is None:
+            raise ValueError("Each condition must have 'field' and 'value'")
+
+        if field.lower() not in supported_fields:
+            raise ValueError(f"Unsupported field: {field}. Supported fields are: {', '.join(supported_fields)}")
+
+        # Format value based on type
+        if isinstance(value, str):
+            formatted_value = f"'{value}'"
+        else:
+            formatted_value = str(value)
+
+        # Build query part
+        query_parts.append(f"{field}{comparator}{formatted_value}")
+
+    # Join with the specified operator
+    query_string = f" {operator} ".join(query_parts)
+
+    return {"query": query_string}
+
+@mcp.tool()
+async def build_complex_search_query(
+    condition_groups: List[Dict[str, Any]],
+    group_operator: str = "AND"
+) -> Dict[str, str]:
+    """
+    Build a complex search query for Freshdesk tickets with nested condition groups.
+
+    Args:
+        condition_groups: List of condition groups, each with:
+            - conditions: List of condition dictionaries (same as in build_search_query)
+            - operator: Operator to join conditions within this group ('AND' or 'OR')
+        group_operator: The operator to join the groups ('AND' or 'OR')
+
+    Returns:
+        A dictionary with the formatted complex query string
+
+    Example:
+        build_complex_search_query([
+            {
+                "conditions": [
+                    {"field": "status", "value": 2},
+                    {"field": "priority", "value": 3}
+                ],
+                "operator": "AND"
+            },
+            {
+                "conditions": [
+                    {"field": "tag", "value": "urgent"},
+                    {"field": "group", "value": 7}
+                ],
+                "operator": "OR"
+            }
+        ])
+        # Returns: {"query": "(status:2 AND priority:3) AND (tag:'urgent' OR group:7)"}
+    """
+    # Validate group operator
+    if group_operator not in ["AND", "OR"]:
+        raise ValueError("Group operator must be 'AND' or 'OR'")
+
+    group_queries = []
+
+    for group in condition_groups:
+        conditions = group.get("conditions", [])
+        operator = group.get("operator", "AND")
+
+        if not conditions:
+            continue
+
+        # Build query for this group
+        group_query = await build_search_query(conditions, operator)
+        group_query_str = group_query["query"]
+
+        # Add parentheses around the group
+        group_queries.append(f"({group_query_str})")
+
+    # Join groups with the specified operator
+    final_query = f" {group_operator} ".join(group_queries)
+
+    return {"query": final_query}
+
+@mcp.tool()
 async def search_tickets(query: str) -> Dict[str, Any]:
-    """Search for tickets in Freshdesk."""
+    """
+    Search for tickets in Freshdesk using the query string format.
+
+    The query must follow Freshdesk's syntax requirements:
+    - Format: "field_name:value AND/OR field_name:'value'"
+    - Supported fields include: tag, status, priority, type, requester,
+      responder, group, due_by, created_at, updated_at
+    - Examples:
+      - "status:2" (open tickets)
+      - "priority:3 AND status:2" (high priority open tickets)
+      - "tag:'urgent'" (tickets tagged as urgent)
+    """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Content-Type": "application/json",
     }
+
+    # Freshdesk expects the query to be URI encoded
     params = {"query": query}
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers, params=params)
-        return response.json()
+
+    try:
+        async with httpx.AsyncClient(auth=(FRESHDESK_API_KEY, "X")) as client:
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Extract and return the error details
+        error_details = {}
+        try:
+            error_details = e.response.json()
+        except:
+            pass
+
+        error_message = f"Search query error: {str(e)}"
+        return {
+            "error": error_message,
+            "details": error_details
+        }
+    except Exception as e:
+        return {"error": f"Search query failed: {str(e)}"}
 
 @mcp.tool()
 async def get_ticket_conversation(ticket_id: int)-> list[Dict[str, Any]]:
@@ -1180,68 +1335,97 @@ async def list_company_fields() -> List[Dict[str, Any]]:
         except Exception as e:
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
-@mcp.tool()
-async def view_ticket_summary(ticket_id: int) -> Dict[str, Any]:
-    """Get the summary of a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/summary"
-    headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
-        "Content-Type": "application/json"
+@mcp.prompt()
+def search_tickets_help() -> str:
+    """Provide guidance on how to search for tickets in Freshdesk"""
+    return """
+# Freshdesk Ticket Search Guide
+
+The Freshdesk ticket search API requires a specific query format to work correctly.
+
+## Search Query Format
+
+Freshdesk search queries follow this syntax:
+```
+field_name:value [AND/OR] field_name:'string_value'
+```
+
+## Supported Search Fields
+
+Freshdesk ticket search API supports a limited set of fields. Using fields not in this list will result in an "invalid_field" error:
+
+- `tag`: Search by ticket tags (e.g., `tag:'urgent'`)
+- `status`: Ticket status (2=Open, 3=Pending, 4=Resolved, 5=Closed)
+- `priority`: Ticket priority (1=Low, 2=Medium, 3=High, 4=Urgent)
+- `type`: Type of the ticket
+- `requester`: Email of the requester
+- `responder`: Agent assigned to the ticket
+- `group`: Group assigned to the ticket
+- `due_by`: Due date of the ticket
+- `created_at`: Ticket creation date
+- `updated_at`: Ticket last updated date
+- `fr_due_by`: First response due by date
+- `created_date`: Alternative for created_at
+- `updated_date`: Alternative for updated_at
+- `notes`: Search in ticket notes
+- `description`: Search in ticket description
+
+## Query Formatting Tips
+
+- String values should be enclosed in single quotes: `tag:'urgent'`
+- Numbers do not need quotes: `status:2`
+- Date fields can use comparators like `>` or `<`: `created_at:>'2023-01-01'`
+- Spaces are required between conditions and operators: `status:2 AND priority:3`
+- For complex queries, use parentheses: `(status:2 OR status:3) AND priority:4`
+
+## Search Examples
+
+```python
+# Search by tags
+search_tickets("tag:'Auth0'")
+
+# Search by status
+search_tickets("status:2")  # Open tickets
+
+# Search by priority and status
+search_tickets("priority:3 AND status:2")  # High priority open tickets
+
+# Search by creation date
+search_tickets("created_at:>'2023-01-01'")  # Tickets created after Jan 1, 2023
+```
+
+## Using Helper Functions
+
+Helper functions are available to construct valid search queries:
+
+```python
+# Using build_search_query for simple queries
+query = await build_search_query([
+    {"field": "status", "value": 2},
+    {"field": "priority", "value": 3}
+])
+# Returns: {"query": "status:2 AND priority:3"}
+
+# Using build_complex_search_query for complex queries
+complex_query = await build_complex_search_query([
+    {
+        "conditions": [
+            {"field": "status", "value": 2},
+            {"field": "status", "value": 3}
+        ],
+        "operator": "OR"
+    },
+    {
+        "conditions": [
+            {"field": "priority", "value": 3},
+            {"field": "priority", "value": 4}
+        ],
+        "operator": "OR"
     }
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            return {"error": f"Failed to fetch ticket summary: {str(e)}"}
-        except Exception as e:
-            return {"error": f"An unexpected error occurred: {str(e)}"}
-
-@mcp.tool()
-async def update_ticket_summary(ticket_id: int, body: str) -> Dict[str, Any]:
-    """Update the summary of a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/summary"
-    headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "body": body
-    }
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.put(url, headers=headers, json=data)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            return {"error": f"Failed to update ticket summary: {str(e)}"}
-        except Exception as e:
-            return {"error": f"An unexpected error occurred: {str(e)}"}
-
-@mcp.tool()
-async def delete_ticket_summary(ticket_id: int) -> Dict[str, Any]:
-    """Delete the summary of a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/summary"
-    headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
-        "Content-Type": "application/json"
-    }
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.delete(url, headers=headers)
-            if response.status_code == 204:
-                return {"success": True, "message": "Ticket summary deleted successfully"}
-
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            return {"error": f"Failed to delete ticket summary: {str(e)}"}
-        except Exception as e:
-            return {"error": f"An unexpected error occurred: {str(e)}"}
+])
+# Returns: {"query": "(status:2 AND priority:3) OR (tag:'urgent')"}
+```
+"""
 
 def main():
     logging.info("Starting Freshdesk MCP server")
