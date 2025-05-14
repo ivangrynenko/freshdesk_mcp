@@ -27,32 +27,44 @@ The server offers several tools for Freshdesk operations:
 
 The ticket search functionality allows searching for Freshdesk tickets using specific query syntax:
 
-#### Valid Search Fields
+#### Search Query Format
 
-Freshdesk ticket search API supports only a limited set of search fields:
+Freshdesk requires a specific format for search queries:
 
-- `tag`: Search by ticket tags
-- `status`: Ticket status (e.g., 2=Open, 3=Pending, 4=Resolved, 5=Closed)
-- `priority`: Ticket priority (1=Low, 2=Medium, 3=High, 4=Urgent)
-- `type`: Type of the ticket (e.g., Problem, Question, etc.)
-- `requester`: Email of the requester
-- `responder`: Agent assigned to the ticket
-- `group`: Group assigned to the ticket
-- `due_by`: Due date of the ticket
-- `created_at`: Ticket creation date
-- `updated_at`: Ticket last updated date
-- `fr_due_by`: First response due by date
-- `created_date`: Alternative for created_at
-- `updated_date`: Alternative for updated_at
-- `notes`: Search in ticket notes
-- `description`: Search in ticket description
+- Format: `"field_name:value AND/OR field_name:'value'"`
+- String values must be enclosed in single quotes
+- Numeric values should not have quotes
+- Boolean values should be `true` or `false` without quotes
+- Logical operators (`AND`, `OR`) must be uppercase
+- Parentheses can be used to group conditions
+- Spaces are required between different conditions and operators
+
+#### Supported Search Fields
+
+Common fields that can be used in searches:
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| status | integer | Status of the ticket (2=Open, 3=Pending, etc.) |
+| priority | integer | Priority of the ticket (1=Low to 4=Urgent) |
+| type | string | Type of the ticket ('Question', 'Problem', etc.) |
+| tag | string | Tag associated with the ticket |
+| agent_id | integer | ID of the agent assigned to the ticket |
+| group_id | integer | ID of the group assigned to the ticket |
+| created_at | date | Creation date (YYYY-MM-DD) |
+| updated_at | date | Last updated date (YYYY-MM-DD) |
+| due_by | date | Due date (YYYY-MM-DD) |
+| description | string | Text in the ticket description |
+| subject | string | Text in the ticket subject |
+| cf_* | varies | Custom fields (prefix with cf_) |
 
 #### Search Helper Functions
 
 For convenient search query construction, the following helper functions are provided:
 
-- `build_search_query`: Constructs a valid Freshdesk search query from a list of condition dictionaries
-- `build_complex_search_query`: Constructs complex search queries with nested condition groups
+- `build_search_query(field, value, operator)`: Creates a properly formatted search query part
+- `build_complex_search_query(*parts, operator)`: Combines multiple query parts into a complex query
+- `search_tickets_help()`: Provides detailed documentation on Freshdesk's search query syntax
 
 #### Example Usage
 
@@ -66,12 +78,21 @@ search_tickets("priority:3 AND status:2")
 # Search for tickets with a specific tag
 search_tickets("tag:'urgent'")
 
-# Using the helper function to build a query
-query_result = await build_search_query([
-    {"field": "status", "value": 2},
-    {"field": "priority", "value": 3}
-])
-search_result = await search_tickets(query_result["query"])
+# Free text search (will automatically search in subject and description)
+search_tickets("payment issue")
+
+# Using the helper function to build query parts
+status_part = build_search_query("status", 2)  # Returns: status:2
+priority_part = build_search_query("priority", 3)  # Returns: priority:3
+type_part = build_search_query("type", "Question")  # Returns: type:'Question'
+date_part = build_search_query("created_at", "2023-01-01", ">")  # Returns: created_at:>'2023-01-01'
+
+# Combine parts into a complex query
+complex_query = build_complex_search_query(status_part, priority_part, operator="AND")
+# Returns: (status:2 AND priority:3)
+
+# Search with the complex query
+search_result = await search_tickets(complex_query)
 ```
 
 ## Configuration
@@ -155,8 +176,39 @@ Once configured, you can ask Claude to perform operations like:
 - "Update the status of ticket #12345 to 'Resolved'"
 - "List all high-priority tickets assigned to the agent John Doe"
 - "List previous tickets of customer A101 in last 30 days"
-- "Find all open tickets with high or urgent priority created after January 1st" (using the new search functionality)
-- "Search for tickets with the tag 'billing' that are in pending status"
+
+### Search Examples
+
+- "Find all open tickets with high or urgent priority created after January 1st"
+  ```python
+  search_tickets("status:2 AND priority:>2 AND created_at:>'2023-01-01'")
+  ```
+
+- "Find tickets with tag 'billing' that are in pending status"
+  ```python
+  search_tickets("tag:'billing' AND status:3")
+  ```
+
+- "Find tickets with 'payment' mentioned in their subject or description"
+  ```python
+  search_tickets("payment")  # Free text search in subject and description
+  ```
+
+- "Find tickets created in the last month that have not been resolved"
+  ```python
+  # Using helper functions to build a more complex query
+  unresolved = build_complex_search_query(
+    build_search_query("status", 2),  # Open
+    build_search_query("status", 3),  # Pending
+    build_search_query("status", 6),  # Waiting on Customer
+    operator="OR"
+  )
+  last_month = build_search_query("created_at", "2023-05-01", ">")  # Adjust date as needed
+
+  # Combine the parts
+  query = build_complex_search_query(unresolved, last_month, operator="AND")
+  search_tickets(query)
+  ```
 
 ## Testing
 
