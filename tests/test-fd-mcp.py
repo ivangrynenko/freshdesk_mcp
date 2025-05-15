@@ -1,5 +1,5 @@
 import asyncio
-from freshdesk_mcp.server import get_ticket, update_ticket, get_ticket_conversation, update_ticket_conversation,get_agents, list_canned_responses, list_solution_articles, list_solution_categories,list_solution_folders,list_groups,create_group,create_contact_field,create_canned_response_folder,update_canned_response_folder,create_canned_response,update_canned_response,view_canned_response
+from freshdesk_mcp.server import get_ticket, update_ticket, get_ticket_conversation, update_ticket_conversation,get_agents, list_canned_responses, list_solution_articles, list_solution_categories,list_solution_folders,list_groups,create_group,create_contact_field,create_canned_response_folder,update_canned_response_folder,create_canned_response,update_canned_response,view_canned_response, search_tickets, build_search_query, build_complex_search_query
 
 async def test_get_ticket():
     ticket_id = "1289" #Replace with a test ticket Id
@@ -117,6 +117,53 @@ async def test_view_canned_response():
     result = await view_canned_response(canned_response_id)
     print(result)
 
+# New search functionality tests
+async def test_search_tickets_basic():
+    query = "status:2"  # Open tickets
+    result = await search_tickets(query)
+    print(f"Search results for '{query}':")
+    print(result)
+
+async def test_build_and_search():
+    # Build a query for high priority open tickets
+    query_data = await build_search_query([
+        {"field": "status", "value": 2},
+        {"field": "priority", "value": 3}
+    ])
+    query = query_data.get("query")
+    print(f"Built query: {query}")
+
+    # Use the built query to search
+    result = await search_tickets(query)
+    print(f"Search results:")
+    print(result)
+
+async def test_complex_search():
+    # Build a complex query for (open OR pending) AND (high OR urgent)
+    query_data = await build_complex_search_query([
+        {
+            "conditions": [
+                {"field": "status", "value": 2},  # Open
+                {"field": "status", "value": 3}   # Pending
+            ],
+            "operator": "OR"
+        },
+        {
+            "conditions": [
+                {"field": "priority", "value": 3},  # High
+                {"field": "priority", "value": 4}   # Urgent
+            ],
+            "operator": "OR"
+        }
+    ])
+    query = query_data.get("query")
+    print(f"Built complex query: {query}")
+
+    # Use the built query to search
+    result = await search_tickets(query)
+    print(f"Complex search results:")
+    print(result)
+
 if __name__ == "__main__":
     # asyncio.run(test_get_ticket())
     # asyncio.run(test_update_ticket())
@@ -132,4 +179,9 @@ if __name__ == "__main__":
     # asyncio.run(test_update_canned_response_folder())
     # asyncio.run(test_create_canned_response())
     # asyncio.run(test_view_canned_response())
-    asyncio.run(test_update_canned_response())
+    # asyncio.run(test_update_canned_response())
+
+    # Uncomment to test search functionality
+    # asyncio.run(test_search_tickets_basic())
+    # asyncio.run(test_build_and_search())
+    asyncio.run(test_complex_search())

@@ -380,17 +380,126 @@ async def get_ticket(ticket_id: int):
         response = await client.get(url, headers=headers)
         return response.json()
 
+def build_search_query(field: str, value: Union[str, int, bool, None], operator: str = "=") -> str:
+    """
+    Build a properly formatted search query part for Freshdesk API.
+
+    Args:
+        field: The field name to search on
+        value: The value to search for
+        operator: The operator to use (default "=", which is implied in Freshdesk's syntax)
+                 Can also be ">", "<", ">=" (as ":>"), "<=" (as ":<")
+
+    Returns:
+        A properly formatted query part (field:value or field:'value' for strings)
+    """
+    if value is None:
+        return f"{field}:null"
+
+    # Convert operator to Freshdesk syntax
+    op = ""
+    if operator == ">=" or operator == ":>":
+        op = ":>"
+    elif operator == "<=" or operator == ":<":
+        op = ":<"
+    elif operator == ">" or operator == "<":
+        op = f":{operator}"
+
+    # Format value according to its type
+    if isinstance(value, str):
+        # Use single quotes for string values
+        return f"{field}{op}:'{value}'"
+    else:
+        # No quotes for numeric, boolean
+        return f"{field}{op}:{value}"
+
+def build_complex_search_query(*parts, operator: str = "AND") -> str:
+    """
+    Build a complex search query from multiple parts.
+
+    Args:
+        *parts: Multiple query parts
+        operator: The operator to join parts with ("AND" or "OR")
+
+    Returns:
+        A properly formatted complex query with the parts joined by the specified operator
+    """
+    if not parts:
+        return ""
+
+    # Join parts with the specified operator
+    joined_parts = f" {operator} ".join(parts)
+
+    # If there's more than one part, wrap in parentheses
+    if len(parts) > 1:
+        return f"({joined_parts})"
+
+    return joined_parts
+
 @mcp.tool()
 async def search_tickets(query: str) -> Dict[str, Any]:
-    """Search for tickets in Freshdesk."""
+    """
+    Search for tickets in Freshdesk using the query string format.
+
+    The query must follow Freshdesk's syntax requirements:
+    - Format: "field_name:value AND/OR field_name:'value'"
+    - Supported fields include: tag, status, priority, type, agent_id,
+      group_id, created_at, updated_at, due_by, fr_due_by, and custom fields (cf_*)
+    - Examples:
+      - "status:2" (open tickets)
+      - "priority:3 AND status:2" (high priority open tickets)
+      - "tag:'urgent'" (tickets tagged as urgent)
+      - "created_at:>'2023-01-01'" (tickets created after Jan 1, 2023)
+    """
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
     headers = {
+        "Content-Type": "application/json",
         "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
+
+    # Ensure query is properly enclosed in double quotes if not already
+    # Check if the query follows the required format (field:value pattern)
+    # For free text search, we need to use description or notes fields
+    if ":" not in query:
+        # For plain text searches, convert to a description search or subject search
+        # Using OR to search in both fields for better results
+        query = f'(description:"{query}" OR subject:"{query}")'
+
+    # Ensure query is properly enclosed in double quotes if not already
+    if not query.startswith('"') and not query.endswith('"'):
+        query = f'"{query}"'
+
+    # Freshdesk expects the query to be URI encoded
     params = {"query": query}
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers, params=params)
-        return response.json()
+
+    try:
+        async with httpx.AsyncClient(auth=(FRESHDESK_API_KEY, "X")) as client:
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Extract and return the error details
+        error_details = {}
+        try:
+            error_details = e.response.json()
+        except:
+            pass
+
+        # Provide more helpful error messages based on common issues
+        error_message = f"Search query error: {str(e)}"
+        helpful_tip = ""
+
+        if e.response.status_code == 400:
+            if "invalid" in str(error_details).lower():
+                helpful_tip = "\nTip: Ensure your query follows the format 'field:value' and string values are in single quotes. Use the search_tickets_help prompt for examples."
+
+        return {
+            "error": error_message + helpful_tip,
+            "details": error_details,
+            "query_sent": query  # Include the actual query sent for debugging
+        }
+    except Exception as e:
+        return {"error": f"Search query failed: {str(e)}"}
 
 @mcp.tool()
 async def get_ticket_conversation(ticket_id: int)-> list[Dict[str, Any]]:
@@ -1179,6 +1288,62 @@ async def list_company_fields() -> List[Dict[str, Any]]:
             return {"error": f"Failed to fetch company fields: {str(e)}"}
         except Exception as e:
             return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.prompt()
+async def search_tickets_help() -> str:
+    """
+    Provides detailed help on Freshdesk's search query syntax.
+    """
+    return """
+    # Freshdesk Search Ticket Syntax
+
+    Freshdesk search queries must follow this format:
+    `"field_name:value AND/OR field_name:'value'"`
+
+    ## Key requirements:
+
+    1. Queries must be enclosed in double quotes at the outermost level
+    2. String values must be enclosed in single quotes
+    3. Numeric values should not have quotes
+    4. Boolean values should be true or false without quotes
+    5. Logical operators (AND, OR) must be uppercase
+    6. Parentheses can be used to group conditions
+    7. Spaces are required between different conditions and operators
+
+    ## Valid query examples:
+
+    - Priority High: `"priority:3"`
+    - Status Open: `"status:2"`
+    - Type Question: `"type:'Question'"`
+    - Created after date: `"created_at:>'2023-01-01'"`
+    - Tags: `"tag:'urgent'"`
+    - Custom field: `"cf_department:'Engineering'"`
+    - Multiple conditions: `"priority:3 AND status:2"`
+    - Complex query: `"(status:2 OR status:3) AND priority:4"`
+
+    ## Common status, priority and type values:
+
+    ### Status:
+    - 2: Open
+    - 3: Pending
+    - 4: Resolved
+    - 5: Closed
+    - 6: Waiting on Customer
+    - 7: Waiting on Third Party
+
+    ### Priority:
+    - 1: Low
+    - 2: Medium
+    - 3: High
+    - 4: Urgent
+
+    ### Type:
+    - 'Question'
+    - 'Incident'
+    - 'Problem'
+    - 'Feature Request'
+    - 'Refund'
+    """
 
 def main():
     logging.info("Starting Freshdesk MCP server")
