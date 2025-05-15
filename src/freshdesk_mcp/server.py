@@ -454,6 +454,7 @@ async def search_tickets(query: str) -> Dict[str, Any]:
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
     headers = {
         "Content-Type": "application/json",
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
     }
 
     # Ensure query is properly enclosed in double quotes if not already
