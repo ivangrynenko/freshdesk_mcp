@@ -71,10 +71,51 @@ class TicketPriority(IntEnum):
     MEDIUM = 2
     HIGH = 3
     URGENT = 4
+
 class AgentTicketScope(IntEnum):
     GLOBAL_ACCESS = 1
     GROUP_ACCESS = 2
     RESTRICTED_ACCESS = 3
+
+class ContactLanguage(str, Enum):
+    ARABIC = "ar"
+    BULGARIAN = "bg"
+    CATALAN = "ca"
+    CHINESE_CHINA = "zh-CN"
+    CHINESE_TAIWAN = "zh-TW"
+    CROATIAN = "hr"
+    CZECH = "cs"
+    DANISH = "da"
+    DUTCH = "nl"
+    ENGLISH = "en"
+    ESTONIAN = "et"
+    FINNISH = "fi"
+    FRENCH = "fr"
+    GERMAN = "de"
+    GREEK = "el"
+    HEBREW = "he"
+    HUNGARIAN = "hu"
+    INDONESIAN = "id"
+    ITALIAN = "it"
+    JAPANESE = "ja"
+    KOREAN = "ko"
+    LATVIAN = "lv"
+    LITHUANIAN = "lt"
+    NORWEGIAN = "no"
+    POLISH = "pl"
+    PORTUGUESE_BRAZIL = "pt-BR"
+    PORTUGUESE_PORTUGAL = "pt-PT"
+    ROMANIAN = "ro"
+    RUSSIAN = "ru"
+    SLOVAK = "sk"
+    SLOVENIAN = "sl"
+    SPANISH_LATIN_AMERICA = "es-LA"
+    SPANISH_SPAIN = "es"
+    SWEDISH = "sv"
+    THAI = "th"
+    TURKISH = "tr"
+    UKRAINIAN = "uk"
+    VIETNAMESE = "vi"
 
 class UnassignedForOptions(str, Enum):
     THIRTY_MIN = "30m"
@@ -108,6 +149,26 @@ class GroupCreate(BaseModel):
         default=UnassignedForOptions.THIRTY_MIN,
         description="Time after which escalation email will be sent"
     )
+
+class ContactCreate(BaseModel):
+    name: str = Field(..., description="Name of the contact")
+    email: Optional[str] = Field(None, description="Email address of the contact")
+    phone: Optional[str] = Field(None, description="Telephone number of the contact")
+    mobile: Optional[str] = Field(None, description="Mobile number of the contact")
+    twitter_id: Optional[str] = Field(None, description="Twitter handle of the contact")
+    unique_external_id: Optional[str] = Field(None, description="External ID of the contact")
+    address: Optional[str] = Field(None, description="Address of the contact")
+    avatar: Optional[str] = Field(None, description="Path to avatar image file for upload. If provided, request becomes multipart/form-data.")
+    company_id: Optional[int] = Field(None, description="ID of the company to which the contact belongs")
+    custom_fields: Optional[Dict[str, Any]] = Field(None, description="Key-value pairs of custom fields")
+    description: Optional[str] = Field(None, description="A short description of the contact")
+    job_title: Optional[str] = Field(None, description="Job title of the contact")
+    language: Optional[ContactLanguage] = Field(None, description="Language of the contact")
+    tags: Optional[List[str]] = Field(None, description="Tags associated with the contact")
+    time_zone: Optional[str] = Field(None, description="Time zone of the contact")
+    other_emails: Optional[List[str]] = Field(None, description="Additional email addresses for the contact")
+    lookup_parameter: Optional[str] = Field(None, description="Parameter for identifying existing contacts (e.g., email, mobile, phone, unique_external_id)")
+
 
 class ContactFieldCreate(BaseModel):
     label: str = Field(..., description="Display name for the field (as seen by agents)")
@@ -159,6 +220,61 @@ class CannedResponseCreate(BaseModel):
     group_ids: Optional[List[int]] = Field(
         None,
         description="Groups for which the canned response is visible. Required if visibility=2"
+    )
+
+class MakeAgent(BaseModel):
+    occasional: Optional[bool] = Field(None, description="Set to true if the agent is an occasional agent")
+    ticket_scope: AgentTicketScope = Field(..., description="Ticket scope of the agent")
+    group_ids: Optional[List[int]] = Field(None, description="Array of Group IDs that the agent has access to")
+    role_ids: Optional[List[int]] = Field(None, description="Array of Role IDs that are associated with the agent")
+    skill_ids: Optional[List[int]] = Field(None, description="Array of Skill IDs that are associated with the agent")
+    department_ids: Optional[List[int]] = Field(None, description="Array of Department IDs to which the agent is associated")
+
+class CompanyCreate(BaseModel):
+    name: str = Field(..., description="Name of the company")
+    description: Optional[str] = Field(None, description="A short description of the company")
+    domains: Optional[List[str]] = Field(None, description="List of domains associated with the company")
+    note: Optional[str] = Field(None, description="A note about the company")
+    health_score: Optional[str] = Field(None, description="Health score of the company")
+    account_tier: Optional[str] = Field(None, description="Account tier of the company")
+    renewal_date: Optional[str] = Field(None, description="Renewal date for the company's contract (YYYY-MM-DD)") # Consider date validation if needed
+    industry: Optional[str] = Field(None, description="Industry to which the company belongs")
+    custom_fields: Optional[Dict[str, Any]] = Field(None, description="Key-value pairs of custom fields for the company")
+
+class CompanyFieldCreate(BaseModel):
+    label: str = Field(..., description="Label for the company field")
+    type: str = Field(
+        ...,
+        description="Type of the company field",
+        # Regex for Freshdesk supported company field types based on typical patterns
+        # This might need adjustment if Freshdesk has a very specific list or different naming
+        pattern="^(custom_text|custom_paragraph|custom_number|custom_date|custom_checkbox|custom_dropdown|custom_url)$"
+    )
+    position: Optional[int] = Field(None, description="Position of the company field among other fields")
+    required_for_agents: Optional[bool] = Field(False, description="Set to true if the field is mandatory for agents")
+    # Making choices more specific for creation - value is required.
+    choices: Optional[List[Dict[str, Union[str, int]]]] = Field(
+        None,
+        description="Array of choices for dropdown fields. Each dict should have 'value' and optionally 'position'."
+    )
+    # Add other common fields if necessary, based on Freshdesk API for company fields
+    # For example: displayed_for_customers, customers_can_edit (if applicable to company fields)
+
+class CompanyFieldUpdate(BaseModel):
+    label: Optional[str] = Field(None, description="Label for the company field")
+    # Type is usually not updatable, but including it as optional if API allows
+    type: Optional[str] = Field(
+        None,
+        description="Type of the company field",
+        pattern="^(custom_text|custom_paragraph|custom_number|custom_date|custom_checkbox|custom_dropdown|custom_url)$"
+    )
+    position: Optional[int] = Field(None, description="Position of the company field among other fields")
+    required_for_agents: Optional[bool] = Field(None, description="Set to true if the field is mandatory for agents")
+    # For choices, Freshdesk API might require specific handling for updating/deleting choices (e.g., by ID)
+    # This model assumes choices are replaced or new ones added. Check API for partial updates to choices.
+    choices: Optional[List[Dict[str, Union[str, int]]]] = Field(
+        None,
+        description="Array of choices for dropdown fields. Each dict should have 'value' and optionally 'position'."
     )
 
 @mcp.tool()
@@ -521,6 +637,196 @@ async def update_contact(contact_id: int, contact_fields: Dict[str, Any])-> Dict
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=data)
         return response.json()
+
+
+@mcp.tool()
+async def create_contact(contact_fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a contact in Freshdesk.
+    Handles JSON or multipart/form-data requests based on 'avatar' presence.
+    """
+    try:
+        # Validate that at least one identifier is present along with name
+        if not contact_fields.get("name"):
+            return {"error": "Name is a required field for creating a contact."}
+
+        required_one_of = ["email", "phone", "mobile", "twitter_id", "unique_external_id"]
+        if not any(contact_fields.get(field) for field in required_one_of):
+            return {"error": f"At least one of {', '.join(required_one_of)} must be provided."}
+
+        validated_fields = ContactCreate(**contact_fields)
+        contact_data = validated_fields.model_dump(exclude_none=True)
+
+    except Exception as e: # Pydantic's ValidationError
+        return {"error": f"Validation error: {str(e)}"}
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+
+    avatar_path = contact_data.pop("avatar", None)
+
+    async with httpx.AsyncClient() as client:
+        try:
+            if avatar_path:
+                if not os.path.exists(avatar_path):
+                    return {"error": f"Avatar file not found at path: {avatar_path}"}
+                files = {'avatar': (os.path.basename(avatar_path), open(avatar_path, 'rb'))}
+                # httpx will set Content-Type to multipart/form-data
+                # For multipart, data should be passed to 'data' param, not 'json'
+                response = await client.post(url, headers=headers, data=contact_data, files=files)
+            else:
+                headers["Content-Type"] = "application/json"
+                response = await client.post(url, headers=headers, json=contact_data)
+
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to create contact: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to create contact: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+
+@mcp.tool()
+async def delete_contact(contact_id: int) -> Dict[str, Any]:
+    """Soft delete a contact in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            if response.status_code == 204:
+                return {"success": True, "message": f"Contact {contact_id} deleted successfully."}
+            response.raise_for_status() # Should not happen if 204 is success
+            return response.json() # Should not happen
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to delete contact {contact_id}: {str(e)}", "details": error_details}
+            except Exception:
+                 return {"error": f"Failed to delete contact {contact_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while deleting contact {contact_id}: {str(e)}"}
+
+
+@mcp.tool()
+async def hard_delete_contact(contact_id: int, force: Optional[bool] = False) -> Dict[str, Any]:
+    """Hard delete a contact in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/hard_delete"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    params = {}
+    if force:
+        params["force"] = "true"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers, params=params)
+            if response.status_code == 204:
+                return {"success": True, "message": f"Contact {contact_id} hard deleted successfully."}
+            response.raise_for_status()
+            return response.json() # Should not happen
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to hard delete contact {contact_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to hard delete contact {contact_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while hard deleting contact {contact_id}: {str(e)}"}
+
+
+@mcp.tool()
+async def make_agent_from_contact(contact_id: int, agent_details: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a contact into an agent in Freshdesk."""
+    if not agent_details:
+        return {"error": "agent_details cannot be empty."}
+
+    try:
+        validated_details = MakeAgent(**agent_details)
+        request_data = validated_details.model_dump(exclude_none=True)
+    except Exception as e: # Pydantic's ValidationError
+        return {"error": f"Validation error for agent_details: {str(e)}"}
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/make_agent"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(url, headers=headers, json=request_data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to make agent from contact {contact_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to make agent from contact {contact_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while making agent from contact {contact_id}: {str(e)}"}
+
+
+@mcp.tool()
+async def restore_contact(contact_id: int) -> Dict[str, Any]:
+    """Restore a soft-deleted contact in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/restore"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(url, headers=headers) # No body needed for restore
+            if response.status_code == 204:
+                return {"success": True, "message": f"Contact {contact_id} restored successfully."}
+            response.raise_for_status()
+            return response.json() # Should not happen
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to restore contact {contact_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to restore contact {contact_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while restoring contact {contact_id}: {str(e)}"}
+
+
+@mcp.tool()
+async def send_invite_to_contact(contact_id: int) -> Dict[str, Any]:
+    """Send an invitation email to a contact in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/send_invite"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(url, headers=headers) # No body needed for sending invite
+            if response.status_code == 204: # Freshdesk API doc says 200 OK, but it's typically 204 for no content actions
+                return {"success": True, "message": f"Invitation sent to contact {contact_id} successfully."}
+            # Handle 200 OK if that's what API returns
+            if response.status_code == 200:
+                 return {"success": True, "message": f"Invitation sent to contact {contact_id} successfully.", "details": response.json()}
+            response.raise_for_status()
+            return response.json() # Should not happen if 204 or 200
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to send invite to contact {contact_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to send invite to contact {contact_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while sending invite to contact {contact_id}: {str(e)}"}
+
+
 @mcp.tool()
 async def list_canned_responses(folder_id: int)-> list[Dict[str, Any]]:
     """List all canned responses in Freshdesk."""
@@ -823,6 +1129,52 @@ async def search_agents(query: str) -> list[Dict[str, Any]]:
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
         return response.json()
+
+@mcp.tool()
+async def delete_agent(agent_id: int) -> Dict[str, Any]:
+    """Delete an agent in Freshdesk. Deleting an agent downgrades them to a contact."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/{agent_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            if response.status_code == 204:
+                return {"message": f"Agent {agent_id} deleted successfully and downgraded to contact."}
+            response.raise_for_status()
+            # Should not be reached if 204 is success and other errors are raised
+            return {"error": f"Unexpected status code {response.status_code}", "details": response.text}
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to delete agent {agent_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to delete agent {agent_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while deleting agent {agent_id}: {str(e)}"}
+
+@mcp.tool()
+async def get_current_agent() -> Dict[str, Any]:
+    """Get details of the currently authenticated agent in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/me"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to get current agent: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to get current agent: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while getting current agent: {str(e)}"}
+
 @mcp.tool()
 async def list_groups(page: Optional[int] = 1, per_page: Optional[int] = 30)-> list[Dict[str, Any]]:
     """List all groups in Freshdesk."""
@@ -837,6 +1189,103 @@ async def list_groups(page: Optional[int] = 1, per_page: Optional[int] = 30)-> l
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers, params=params)
         return response.json()
+
+@mcp.tool()
+async def view_role(role_id: int) -> Dict[str, Any]:
+    """View a specific role in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/roles/{role_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to view role {role_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to view role {role_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while viewing role {role_id}: {str(e)}"}
+
+@mcp.tool()
+async def list_roles() -> Dict[str, Any]: # Corrected return type to Dict, assuming Freshdesk returns a dict with a 'roles' key or similar
+    """List all roles in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/roles"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            # Typically, list endpoints return a dictionary like {"roles": [...]} or directly a list.
+            # Assuming it's a dictionary for consistency with other list functions.
+            # If API returns a list directly, this can be adjusted.
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to list roles: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to list roles: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while listing roles: {str(e)}"}
+
+@mcp.tool()
+async def view_product(product_id: int) -> Dict[str, Any]:
+    """View a specific product in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/products/{product_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to view product {product_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to view product {product_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while viewing product {product_id}: {str(e)}"}
+
+@mcp.tool()
+async def list_products() -> Dict[str, Any]: # Freshdesk typically returns a list, but wrapping in Dict for consistency if it's {"products": [...]} or directly a list.
+    """List all products in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/products"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            # The API returns a list of products directly.
+            # To maintain consistency with other list functions that might return a dict (e.g. with pagination),
+            # we can return it as {"products": response.json()} or adjust the return type hint to List[Dict[str, Any]].
+            # For now, returning the direct JSON which is List[Dict[str, Any]].
+            # The type hint Dict[str, Any] is a bit general if it's a direct list.
+            # Let's assume it might be a list or a dict like {"products": []}
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to list products: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to list products: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while listing products: {str(e)}"}
 
 @mcp.tool()
 async def create_group(group_fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -908,6 +1357,30 @@ async def update_ticket_field(ticket_field_id: int, ticket_field_fields: Dict[st
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=ticket_field_fields)
         return response.json()
+
+@mcp.tool()
+async def delete_ticket_field(ticket_field_id: int) -> Dict[str, Any]:
+    """Delete a ticket field in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/admin/ticket_fields/{ticket_field_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            if response.status_code == 204:
+                return {"message": f"Ticket field {ticket_field_id} deleted successfully"}
+            response.raise_for_status()
+            # Should not be reached if 204 is success and other errors are raised
+            return {"error": f"Unexpected status code {response.status_code}", "details": response.text}
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to delete ticket field {ticket_field_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to delete ticket field {ticket_field_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while deleting ticket field {ticket_field_id}: {str(e)}"}
 
 @mcp.tool()
 async def update_group(group_id: int, group_fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -983,6 +1456,31 @@ async def update_contact_field(contact_field_id: int, contact_field_fields: Dict
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=contact_field_fields)
         return response.json()
+
+@mcp.tool()
+async def delete_contact_field(contact_field_id: int) -> Dict[str, Any]:
+    """Delete a contact field in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contact_field/{contact_field_id}" # Note: singular 'contact_field'
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            if response.status_code == 204:
+                return {"message": f"Contact field {contact_field_id} deleted successfully"}
+            response.raise_for_status()
+            # Should not be reached if 204 is success and other errors are raised
+            return {"error": f"Unexpected status code {response.status_code}", "details": response.text}
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to delete contact field {contact_field_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to delete contact field {contact_field_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while deleting contact field {contact_field_id}: {str(e)}"}
+
 @mcp.tool()
 async def get_field_properties(field_name: str):
     """Get properties of a specific field by name."""
@@ -1102,6 +1600,67 @@ async def list_companies(page: Optional[int] = 1, per_page: Optional[int] = 30) 
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
 @mcp.tool()
+async def create_company(company_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a company in Freshdesk.
+    The 'name' field is mandatory.
+    """
+    try:
+        if not company_data.get("name"):
+            return {"error": "The 'name' field is mandatory for creating a company."}
+        
+        validated_data = CompanyCreate(**company_data)
+        request_data = validated_data.model_dump(exclude_none=True)
+    except Exception as e: # Pydantic's ValidationError
+        return {"error": f"Validation error: {str(e)}"}
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=request_data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to create company: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to create company: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while creating company: {str(e)}"}
+
+@mcp.tool()
+async def delete_company(company_id: int) -> Dict[str, Any]:
+    """Delete a company in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies/{company_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json" # Though not strictly needed for DELETE, it's good practice
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            if response.status_code == 204:
+                return {"success": True, "message": f"Company {company_id} deleted successfully."}
+            response.raise_for_status() # Will raise for other errors
+            # Should not be reached if 204 is success and other errors are raised
+            return {"error": f"Unexpected status code {response.status_code}", "details": response.text}
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to delete company {company_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to delete company {company_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while deleting company {company_id}: {str(e)}"}
+
+
+@mcp.tool()
 async def view_company(company_id: int) -> Dict[str, Any]:
     """Get a company in Freshdesk."""
     url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies/{company_id}"
@@ -1160,6 +1719,121 @@ async def find_company_by_name(name: str) -> Dict[str, Any]:
             return {"error": f"Failed to find company: {str(e)}"}
         except Exception as e:
             return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def create_company_field(field_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a custom company field in Freshdesk."""
+    try:
+        if not field_data.get("label") or not field_data.get("type"):
+            return {"error": "The 'label' and 'type' fields are mandatory."}
+        
+        validated_data = CompanyFieldCreate(**field_data)
+        request_data = validated_data.model_dump(exclude_none=True)
+    except Exception as e: # Pydantic's ValidationError
+        return {"error": f"Validation error: {str(e)}"}
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_fields"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, headers=headers, json=request_data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to create company field: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to create company field: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while creating company field: {str(e)}"}
+
+@mcp.tool()
+async def view_company_field(field_id: int) -> Dict[str, Any]:
+    """View a specific custom company field in Freshdesk."""
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_fields/{field_id}"
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to view company field {field_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to view company field {field_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while viewing company field {field_id}: {str(e)}"}
+
+@mcp.tool()
+async def update_company_field(field_id: int, field_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update a custom company field in Freshdesk.
+    Note: API path uses singular 'company_field'.
+    """
+    try:
+        validated_data = CompanyFieldUpdate(**field_data)
+        request_data = validated_data.model_dump(exclude_none=True)
+        if not request_data:
+             return {"error": "No update data provided."}
+    except Exception as e: # Pydantic's ValidationError
+        return {"error": f"Validation error: {str(e)}"}
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_field/{field_id}" # Singular 'company_field'
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(url, headers=headers, json=request_data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to update company field {field_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to update company field {field_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while updating company field {field_id}: {str(e)}"}
+
+@mcp.tool()
+async def delete_company_field(field_id: int) -> Dict[str, Any]:
+    """Delete a custom company field in Freshdesk.
+    Note: API path uses singular 'company_field'.
+    """
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_field/{field_id}" # Singular 'company_field'
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            if response.status_code == 204:
+                return {"success": True, "message": f"Company field {field_id} deleted successfully."}
+            response.raise_for_status()
+            # Should not be reached if 204 is success
+            return {"error": f"Unexpected status code {response.status_code}", "details": response.text}
+        except httpx.HTTPStatusError as e:
+            try:
+                error_details = e.response.json()
+                return {"error": f"Failed to delete company field {field_id}: {str(e)}", "details": error_details}
+            except Exception:
+                return {"error": f"Failed to delete company field {field_id}: {str(e)}, response: {e.response.text}"}
+        except Exception as e:
+            return {"error": f"An unexpected error occurred while deleting company field {field_id}: {str(e)}"}
+
 
 @mcp.tool()
 async def list_company_fields() -> List[Dict[str, Any]]:

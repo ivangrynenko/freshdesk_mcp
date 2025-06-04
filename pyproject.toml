@@ -25,3 +25,8 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 freshdesk-mcp = "freshdesk_mcp.server:main"
+
+[project.group.dev.dependencies]
+pytest = "^7.0"
+pytest-httpx = "^0.28.0" # Added pytest-httpx
+pytest-asyncio = "^0.21.1" # Added pytest-asyncio for async tests
