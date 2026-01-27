@@ -1,3 +1,9 @@
+import pytest
+
+# This file is a manual integration script (requires real Freshdesk connectivity).
+# It should not run in CI/unit-test environments.
+pytest.skip("manual Freshdesk integration script", allow_module_level=True)
+
 import asyncio
 from freshdesk_mcp.server import get_ticket, update_ticket, get_ticket_conversation, update_ticket_conversation,get_agents, list_canned_responses, list_solution_articles, list_solution_categories,list_solution_folders,list_groups,create_group,create_contact_field,create_canned_response_folder,update_canned_response_folder,create_canned_response,update_canned_response,view_canned_response, search_tickets, build_search_query, build_complex_search_query
 
