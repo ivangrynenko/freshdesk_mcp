@@ -10,6 +10,21 @@ An MCP server implementation that integrates with Freshdesk, enabling AI models 
 - **Automated Ticket Management**: Handle ticket creation, updates, and responses
 - **Advanced Search Capabilities**: Comprehensive ticket search with helper functions for complex queries
 
+## CLI
+
+This repository also ships a small CLI named `fd` that wraps the same underlying Freshdesk calls.
+
+Environment:
+- `FRESHDESK_DOMAIN` (example: `your-domain.freshdesk.com`)
+- `FRESHDESK_API_KEY`
+
+Examples:
+- `fd validate-env`
+- `fd tickets get 123 --json`
+- `fd tickets search "status:2 AND priority:3" --json`
+- `fd tickets reply 123 --body "Hello" --json`
+- `fd companies list --json`
+
 ## Components
 
 ### Tools

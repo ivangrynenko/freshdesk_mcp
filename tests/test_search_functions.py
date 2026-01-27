@@ -1,6 +1,6 @@
 import pytest
 
-from src.freshdesk_mcp.server import build_complex_search_query, build_search_query, search_tickets
+from freshdesk_mcp.server import build_complex_search_query, build_search_query, search_tickets
 
 
 def test_build_search_query_string():
