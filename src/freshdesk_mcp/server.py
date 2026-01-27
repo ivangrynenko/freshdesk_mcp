@@ -6,7 +6,9 @@ import base64
 from typing import Optional, Dict, Union, Any, List
 from enum import IntEnum, Enum
 import re
-from pydantic import BaseModel, Field
+from datetime import date
+
+from pydantic import BaseModel, Field, ValidationError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -14,8 +16,19 @@ logging.basicConfig(level=logging.INFO)
 # Initialize FastMCP server
 mcp = FastMCP("freshdesk-mcp")
 
-FRESHDESK_API_KEY = os.getenv("FRESHDESK_API_KEY")
-FRESHDESK_DOMAIN = os.getenv("FRESHDESK_DOMAIN")
+def freshdesk_api_key() -> str:
+    """Read the Freshdesk API key from the environment at call time.
+
+    Tests monkeypatch env vars after import, so we must not snapshot values at import time.
+    """
+
+    return os.getenv("FRESHDESK_API_KEY") or ""
+
+
+def freshdesk_domain() -> str:
+    """Read the Freshdesk domain from the environment at call time."""
+
+    return os.getenv("FRESHDESK_DOMAIN") or ""
 
 
 def parse_link_header(link_header: str) -> Dict[str, Optional[int]]:
@@ -237,9 +250,13 @@ class CompanyCreate(BaseModel):
     note: Optional[str] = Field(None, description="A note about the company")
     health_score: Optional[str] = Field(None, description="Health score of the company")
     account_tier: Optional[str] = Field(None, description="Account tier of the company")
-    renewal_date: Optional[str] = Field(None, description="Renewal date for the company's contract (YYYY-MM-DD)") # Consider date validation if needed
+    renewal_date: Optional[date] = Field(
+        None, description="Renewal date for the company's contract (YYYY-MM-DD)"
+    )
     industry: Optional[str] = Field(None, description="Industry to which the company belongs")
-    custom_fields: Optional[Dict[str, Any]] = Field(None, description="Key-value pairs of custom fields for the company")
+    custom_fields: Optional[Dict[str, Any]] = Field(
+        None, description="Key-value pairs of custom fields for the company"
+    )
 
 class CompanyFieldCreate(BaseModel):
     label: str = Field(..., description="Label for the company field")
@@ -251,7 +268,9 @@ class CompanyFieldCreate(BaseModel):
         pattern="^(custom_text|custom_paragraph|custom_number|custom_date|custom_checkbox|custom_dropdown|custom_url)$"
     )
     position: Optional[int] = Field(None, description="Position of the company field among other fields")
-    required_for_agents: Optional[bool] = Field(False, description="Set to true if the field is mandatory for agents")
+    required_for_agents: Optional[bool] = Field(
+        None, description="Set to true if the field is mandatory for agents"
+    )
     # Making choices more specific for creation - value is required.
     choices: Optional[List[Dict[str, Union[str, int]]]] = Field(
         None,
@@ -280,9 +299,9 @@ class CompanyFieldUpdate(BaseModel):
 @mcp.tool()
 async def get_ticket_fields() -> Dict[str, Any]:
     """Get ticket fields from Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/ticket_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/ticket_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -299,7 +318,7 @@ async def get_tickets(page: Optional[int] = 1, per_page: Optional[int] = 30) -> 
     if per_page < 1 or per_page > 100:
         return {"error": "Page size must be between 1 and 100"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets"
 
     params = {
         "page": page,
@@ -307,7 +326,7 @@ async def get_tickets(page: Optional[int] = 1, per_page: Optional[int] = 30) -> 
     }
 
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -391,9 +410,9 @@ async def create_ticket(
     if additional_fields:
         data.update(additional_fields)
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -424,9 +443,9 @@ async def update_ticket(ticket_id: int, ticket_fields: Dict[str, Any]) -> Dict[s
     if not ticket_fields:
         return {"error": "No fields provided for update"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -476,9 +495,9 @@ async def update_ticket(ticket_id: int, ticket_fields: Dict[str, Any]) -> Dict[s
 @mcp.tool()
 async def delete_ticket(ticket_id: int) -> str:
     """Delete a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.delete(url, headers=headers)
@@ -487,9 +506,9 @@ async def delete_ticket(ticket_id: int) -> str:
 @mcp.tool()
 async def get_ticket(ticket_id: int):
     """Get a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
 
     async with httpx.AsyncClient() as client:
@@ -499,9 +518,9 @@ async def get_ticket(ticket_id: int):
 @mcp.tool()
 async def search_tickets(query: str) -> Dict[str, Any]:
     """Search for tickets in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/search/tickets"
+    url = f"https://{freshdesk_domain()}/api/v2/search/tickets"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     params = {"query": query}
     async with httpx.AsyncClient() as client:
@@ -511,9 +530,9 @@ async def search_tickets(query: str) -> Dict[str, Any]:
 @mcp.tool()
 async def get_ticket_conversation(ticket_id: int)-> list[Dict[str, Any]]:
     """Get a ticket conversation in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/conversations"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}/conversations"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -522,9 +541,9 @@ async def get_ticket_conversation(ticket_id: int)-> list[Dict[str, Any]]:
 @mcp.tool()
 async def create_ticket_reply(ticket_id: int,body: str)-> Dict[str, Any]:
     """Create a reply to a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/reply"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}/reply"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     data = {
         "body": body
@@ -536,9 +555,9 @@ async def create_ticket_reply(ticket_id: int,body: str)-> Dict[str, Any]:
 @mcp.tool()
 async def create_ticket_note(ticket_id: int,body: str)-> Dict[str, Any]:
     """Create a note for a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/notes"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}/notes"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     data = {
         "body": body
@@ -550,9 +569,9 @@ async def create_ticket_note(ticket_id: int,body: str)-> Dict[str, Any]:
 @mcp.tool()
 async def update_ticket_conversation(conversation_id: int,body: str)-> Dict[str, Any]:
     """Update a conversation for a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/conversations/{conversation_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/conversations/{conversation_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     data = {
         "body": body
@@ -574,9 +593,9 @@ async def get_agents(page: Optional[int] = 1, per_page: Optional[int] = 30)-> li
 
     if per_page < 1 or per_page > 100:
         return {"error": "Page size must be between 1 and 100"}
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents"
+    url = f"https://{freshdesk_domain()}/api/v2/agents"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     params = {
         "page": page,
@@ -589,9 +608,9 @@ async def get_agents(page: Optional[int] = 1, per_page: Optional[int] = 30)-> li
 @mcp.tool()
 async def list_contacts(page: Optional[int] = 1, per_page: Optional[int] = 30)-> list[Dict[str, Any]]:
     """List all contacts in Freshdesk with pagination support."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     params = {
         "page": page,
@@ -604,9 +623,9 @@ async def list_contacts(page: Optional[int] = 1, per_page: Optional[int] = 30)->
 @mcp.tool()
 async def get_contact(contact_id: int)-> Dict[str, Any]:
     """Get a contact in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -615,9 +634,9 @@ async def get_contact(contact_id: int)-> Dict[str, Any]:
 @mcp.tool()
 async def search_contacts(query: str)-> list[Dict[str, Any]]:
     """Search for contacts in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/autocomplete"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/autocomplete"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     params = {"term": query}
     async with httpx.AsyncClient() as client:
@@ -627,9 +646,9 @@ async def search_contacts(query: str)-> list[Dict[str, Any]]:
 @mcp.tool()
 async def update_contact(contact_id: int, contact_fields: Dict[str, Any])-> Dict[str, Any]:
     """Update a contact in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     data = {}
     for field, value in contact_fields.items():
@@ -656,12 +675,12 @@ async def create_contact(contact_fields: Dict[str, Any]) -> Dict[str, Any]:
         validated_fields = ContactCreate(**contact_fields)
         contact_data = validated_fields.model_dump(exclude_none=True)
 
-    except Exception as e: # Pydantic's ValidationError
+    except ValidationError as e:
         return {"error": f"Validation error: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
 
     avatar_path = contact_data.pop("avatar", None)
@@ -671,10 +690,20 @@ async def create_contact(contact_fields: Dict[str, Any]) -> Dict[str, Any]:
             if avatar_path:
                 if not os.path.exists(avatar_path):
                     return {"error": f"Avatar file not found at path: {avatar_path}"}
-                files = {'avatar': (os.path.basename(avatar_path), open(avatar_path, 'rb'))}
-                # httpx will set Content-Type to multipart/form-data
-                # For multipart, data should be passed to 'data' param, not 'json'
-                response = await client.post(url, headers=headers, data=contact_data, files=files)
+
+                # Ensure we close the file handle (long-running server safety).
+                with open(avatar_path, "rb") as avatar_f:
+                    files = {
+                        "avatar": (
+                            os.path.basename(avatar_path),
+                            avatar_f,
+                        )
+                    }
+                    # httpx will set Content-Type to multipart/form-data
+                    # For multipart, data should be passed to 'data' param, not 'json'
+                    response = await client.post(
+                        url, headers=headers, data=contact_data, files=files
+                    )
             else:
                 headers["Content-Type"] = "application/json"
                 response = await client.post(url, headers=headers, json=contact_data)
@@ -694,9 +723,9 @@ async def create_contact(contact_fields: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def delete_contact(contact_id: int) -> Dict[str, Any]:
     """Soft delete a contact in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -718,9 +747,9 @@ async def delete_contact(contact_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def hard_delete_contact(contact_id: int, force: Optional[bool] = False) -> Dict[str, Any]:
     """Hard delete a contact in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/hard_delete"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}/hard_delete"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     params = {}
     if force:
@@ -752,12 +781,12 @@ async def make_agent_from_contact(contact_id: int, agent_details: Dict[str, Any]
     try:
         validated_details = MakeAgent(**agent_details)
         request_data = validated_details.model_dump(exclude_none=True)
-    except Exception as e: # Pydantic's ValidationError
+    except ValidationError as e:
         return {"error": f"Validation error for agent_details: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/make_agent"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}/make_agent"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -779,9 +808,9 @@ async def make_agent_from_contact(contact_id: int, agent_details: Dict[str, Any]
 @mcp.tool()
 async def restore_contact(contact_id: int) -> Dict[str, Any]:
     """Restore a soft-deleted contact in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/restore"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}/restore"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -803,9 +832,9 @@ async def restore_contact(contact_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def send_invite_to_contact(contact_id: int) -> Dict[str, Any]:
     """Send an invitation email to a contact in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contacts/{contact_id}/send_invite"
+    url = f"https://{freshdesk_domain()}/api/v2/contacts/{contact_id}/send_invite"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -830,9 +859,9 @@ async def send_invite_to_contact(contact_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def list_canned_responses(folder_id: int)-> list[Dict[str, Any]]:
     """List all canned responses in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_response_folders/{folder_id}/responses"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_response_folders/{folder_id}/responses"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     canned_responses = []
     async with httpx.AsyncClient() as client:
@@ -844,9 +873,9 @@ async def list_canned_responses(folder_id: int)-> list[Dict[str, Any]]:
 @mcp.tool()
 async def list_canned_response_folders()-> list[Dict[str, Any]]:
     """List all canned response folders in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_response_folders"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_response_folders"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -855,9 +884,9 @@ async def list_canned_response_folders()-> list[Dict[str, Any]]:
 @mcp.tool()
 async def view_canned_response(canned_response_id: int)-> Dict[str, Any]:
     """View a canned response in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_responses/{canned_response_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_responses/{canned_response_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -873,9 +902,9 @@ async def create_canned_response(canned_response_fields: Dict[str, Any])-> Dict[
     except Exception as e:
         return {"error": f"Validation error: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_responses"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_responses"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=canned_response_data)
@@ -884,9 +913,9 @@ async def create_canned_response(canned_response_fields: Dict[str, Any])-> Dict[
 @mcp.tool()
 async def update_canned_response(canned_response_id: int, canned_response_fields: Dict[str, Any])-> Dict[str, Any]:
     """Update a canned response in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_responses/{canned_response_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_responses/{canned_response_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=canned_response_fields)
@@ -894,9 +923,9 @@ async def update_canned_response(canned_response_id: int, canned_response_fields
 @mcp.tool()
 async def create_canned_response_folder(name: str)-> Dict[str, Any]:
     """Create a canned response folder in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_response_folders"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_response_folders"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     data = {
         "name": name
@@ -908,9 +937,9 @@ async def create_canned_response_folder(name: str)-> Dict[str, Any]:
 async def update_canned_response_folder(folder_id: int, name: str)-> Dict[str, Any]:
     """Update a canned response folder in Freshdesk."""
     print(folder_id, name)
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/canned_response_folders/{folder_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/canned_response_folders/{folder_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     data = {
         "name": name
@@ -923,9 +952,9 @@ async def update_canned_response_folder(folder_id: int, name: str)-> Dict[str, A
 async def list_solution_articles(folder_id: int)-> list[Dict[str, Any]]:
     """List all solution articles in Freshdesk."""
     solution_articles = []
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/folders/{folder_id}/articles"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/folders/{folder_id}/articles"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -938,9 +967,9 @@ async def list_solution_folders(category_id: int)-> list[Dict[str, Any]]:
     if not category_id:
         return {"error": "Category ID is required"}
     """List all solution folders in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/categories/{category_id}/folders"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/categories/{category_id}/folders"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -949,9 +978,9 @@ async def list_solution_folders(category_id: int)-> list[Dict[str, Any]]:
 @mcp.tool()
 async def list_solution_categories()-> list[Dict[str, Any]]:
     """List all solution categories in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/categories"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/categories"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -960,9 +989,9 @@ async def list_solution_categories()-> list[Dict[str, Any]]:
 @mcp.tool()
 async def view_solution_category(category_id: int)-> Dict[str, Any]:
     """View a solution category in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/categories/{category_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/categories/{category_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -974,9 +1003,9 @@ async def create_solution_category(category_fields: Dict[str, Any])-> Dict[str, 
     if not category_fields.get("name"):
         return {"error": "Name is required"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/categories"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/categories"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=category_fields)
@@ -988,9 +1017,9 @@ async def update_solution_category(category_id: int, category_fields: Dict[str, 
     if not category_fields.get("name"):
         return {"error": "Name is required"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/categories/{category_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/categories/{category_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=category_fields)
@@ -1001,9 +1030,9 @@ async def create_solution_category_folder(category_id: int, folder_fields: Dict[
     """Create a solution category folder in Freshdesk."""
     if not folder_fields.get("name"):
         return {"error": "Name is required"}
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/categories/{category_id}/folders"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/categories/{category_id}/folders"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=folder_fields)
@@ -1012,9 +1041,9 @@ async def create_solution_category_folder(category_id: int, folder_fields: Dict[
 @mcp.tool()
 async def view_solution_category_folder(folder_id: int)-> Dict[str, Any]:
     """View a solution category folder in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/folders/{folder_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/folders/{folder_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1024,9 +1053,9 @@ async def update_solution_category_folder(folder_id: int, folder_fields: Dict[st
     """Update a solution category folder in Freshdesk."""
     if not folder_fields.get("name"):
         return {"error": "Name is required"}
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/folders/{folder_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/folders/{folder_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=folder_fields)
@@ -1038,9 +1067,9 @@ async def create_solution_article(folder_id: int, article_fields: Dict[str, Any]
     """Create a solution article in Freshdesk."""
     if not article_fields.get("title") or not article_fields.get("status") or not article_fields.get("description"):
         return {"error": "Title, status and description are required"}
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/folders/{folder_id}/articles"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/folders/{folder_id}/articles"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=article_fields)
@@ -1049,9 +1078,9 @@ async def create_solution_article(folder_id: int, article_fields: Dict[str, Any]
 @mcp.tool()
 async def view_solution_article(article_id: int)-> Dict[str, Any]:
     """View a solution article in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/articles/{article_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/articles/{article_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1060,9 +1089,9 @@ async def view_solution_article(article_id: int)-> Dict[str, Any]:
 @mcp.tool()
 async def update_solution_article(article_id: int, article_fields: Dict[str, Any])-> Dict[str, Any]:
     """Update a solution article in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/solutions/articles/{article_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/solutions/articles/{article_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=article_fields)
@@ -1071,9 +1100,9 @@ async def update_solution_article(article_id: int, article_fields: Dict[str, Any
 @mcp.tool()
 async def view_agent(agent_id: int)-> Dict[str, Any]:
     """View an agent in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/{agent_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/agents/{agent_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1092,9 +1121,9 @@ async def create_agent(agent_fields: Dict[str, Any]) -> Dict[str, Any]:
             "error": "Invalid value for ticket_scope. Must be one of: " + ", ".join([e.name for e in AgentTicketScope])
         }
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents"
+    url = f"https://{freshdesk_domain()}/api/v2/agents"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
 
     async with httpx.AsyncClient() as client:
@@ -1111,9 +1140,9 @@ async def create_agent(agent_fields: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def update_agent(agent_id: int, agent_fields: Dict[str, Any]) -> Dict[str, Any]:
     """Update an agent in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/{agent_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/agents/{agent_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=agent_fields)
@@ -1122,9 +1151,9 @@ async def update_agent(agent_id: int, agent_fields: Dict[str, Any]) -> Dict[str,
 @mcp.tool()
 async def search_agents(query: str) -> list[Dict[str, Any]]:
     """Search for agents in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/autocomplete?term={query}"
+    url = f"https://{freshdesk_domain()}/api/v2/agents/autocomplete?term={query}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1133,9 +1162,9 @@ async def search_agents(query: str) -> list[Dict[str, Any]]:
 @mcp.tool()
 async def delete_agent(agent_id: int) -> Dict[str, Any]:
     """Delete an agent in Freshdesk. Deleting an agent downgrades them to a contact."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/{agent_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/agents/{agent_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -1157,9 +1186,9 @@ async def delete_agent(agent_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def get_current_agent() -> Dict[str, Any]:
     """Get details of the currently authenticated agent in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/agents/me"
+    url = f"https://{freshdesk_domain()}/api/v2/agents/me"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -1178,9 +1207,9 @@ async def get_current_agent() -> Dict[str, Any]:
 @mcp.tool()
 async def list_groups(page: Optional[int] = 1, per_page: Optional[int] = 30)-> list[Dict[str, Any]]:
     """List all groups in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/groups"
+    url = f"https://{freshdesk_domain()}/api/v2/groups"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     params = {
         "page": page,
@@ -1193,9 +1222,9 @@ async def list_groups(page: Optional[int] = 1, per_page: Optional[int] = 30)-> l
 @mcp.tool()
 async def view_role(role_id: int) -> Dict[str, Any]:
     """View a specific role in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/roles/{role_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/roles/{role_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     async with httpx.AsyncClient() as client:
@@ -1213,11 +1242,11 @@ async def view_role(role_id: int) -> Dict[str, Any]:
             return {"error": f"An unexpected error occurred while viewing role {role_id}: {str(e)}"}
 
 @mcp.tool()
-async def list_roles() -> Dict[str, Any]: # Corrected return type to Dict, assuming Freshdesk returns a dict with a 'roles' key or similar
+async def list_roles() -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     """List all roles in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/roles"
+    url = f"https://{freshdesk_domain()}/api/v2/roles"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     async with httpx.AsyncClient() as client:
@@ -1240,9 +1269,9 @@ async def list_roles() -> Dict[str, Any]: # Corrected return type to Dict, assum
 @mcp.tool()
 async def view_product(product_id: int) -> Dict[str, Any]:
     """View a specific product in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/products/{product_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/products/{product_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     async with httpx.AsyncClient() as client:
@@ -1260,11 +1289,11 @@ async def view_product(product_id: int) -> Dict[str, Any]:
             return {"error": f"An unexpected error occurred while viewing product {product_id}: {str(e)}"}
 
 @mcp.tool()
-async def list_products() -> Dict[str, Any]: # Freshdesk typically returns a list, but wrapping in Dict for consistency if it's {"products": [...]} or directly a list.
+async def list_products() -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     """List all products in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/products"
+    url = f"https://{freshdesk_domain()}/api/v2/products"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     async with httpx.AsyncClient() as client:
@@ -1298,9 +1327,9 @@ async def create_group(group_fields: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Validation error: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/groups"
+    url = f"https://{freshdesk_domain()}/api/v2/groups"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1318,9 +1347,9 @@ async def create_group(group_fields: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def view_group(group_id: int) -> Dict[str, Any]:
     """View a group in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/groups/{group_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/groups/{group_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1329,9 +1358,9 @@ async def view_group(group_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def create_ticket_field(ticket_field_fields: Dict[str, Any]) -> Dict[str, Any]:
     """Create a ticket field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/admin/ticket_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/admin/ticket_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=ticket_field_fields)
@@ -1339,9 +1368,9 @@ async def create_ticket_field(ticket_field_fields: Dict[str, Any]) -> Dict[str, 
 @mcp.tool()
 async def view_ticket_field(ticket_field_id: int) -> Dict[str, Any]:
     """View a ticket field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/admin/ticket_fields/{ticket_field_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/admin/ticket_fields/{ticket_field_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1350,9 +1379,9 @@ async def view_ticket_field(ticket_field_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def update_ticket_field(ticket_field_id: int, ticket_field_fields: Dict[str, Any]) -> Dict[str, Any]:
     """Update a ticket field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/admin/ticket_fields/{ticket_field_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/admin/ticket_fields/{ticket_field_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=ticket_field_fields)
@@ -1361,9 +1390,9 @@ async def update_ticket_field(ticket_field_id: int, ticket_field_fields: Dict[st
 @mcp.tool()
 async def delete_ticket_field(ticket_field_id: int) -> Dict[str, Any]:
     """Delete a ticket field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/admin/ticket_fields/{ticket_field_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/admin/ticket_fields/{ticket_field_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -1391,9 +1420,9 @@ async def update_group(group_id: int, group_fields: Dict[str, Any]) -> Dict[str,
         group_data = validated_fields.model_dump(exclude_none=True)
     except Exception as e:
         return {"error": f"Validation error: {str(e)}"}
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/groups/{group_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/groups/{group_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -1409,9 +1438,9 @@ async def update_group(group_id: int, group_fields: Dict[str, Any]) -> Dict[str,
 @mcp.tool()
 async def list_contact_fields()-> list[Dict[str, Any]]:
     """List all contact fields in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contact_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/contact_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1420,9 +1449,9 @@ async def list_contact_fields()-> list[Dict[str, Any]]:
 @mcp.tool()
 async def view_contact_field(contact_field_id: int) -> Dict[str, Any]:
     """View a contact field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contact_fields/{contact_field_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/contact_fields/{contact_field_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.get(url, headers=headers)
@@ -1438,9 +1467,9 @@ async def create_contact_field(contact_field_fields: Dict[str, Any]) -> Dict[str
         contact_field_data = validated_fields.model_dump(exclude_none=True)
     except Exception as e:
         return {"error": f"Validation error: {str(e)}"}
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contact_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/contact_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=contact_field_data)
@@ -1449,9 +1478,9 @@ async def create_contact_field(contact_field_fields: Dict[str, Any]) -> Dict[str
 @mcp.tool()
 async def update_contact_field(contact_field_id: int, contact_field_fields: Dict[str, Any]) -> Dict[str, Any]:
     """Update a contact field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contact_fields/{contact_field_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/contact_fields/{contact_field_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         response = await client.put(url, headers=headers, json=contact_field_fields)
@@ -1460,9 +1489,9 @@ async def update_contact_field(contact_field_id: int, contact_field_fields: Dict
 @mcp.tool()
 async def delete_contact_field(contact_field_id: int) -> Dict[str, Any]:
     """Delete a contact field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/contact_field/{contact_field_id}" # Note: singular 'contact_field'
+    url = f"https://{freshdesk_domain()}/api/v2/contact_field/{contact_field_id}" # Note: singular 'contact_field'
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     async with httpx.AsyncClient() as client:
         try:
@@ -1484,9 +1513,9 @@ async def delete_contact_field(contact_field_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def get_field_properties(field_name: str):
     """Get properties of a specific field by name."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/ticket_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/ticket_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
     actual_field_name=field_name
     if field_name == "type":
@@ -1561,7 +1590,7 @@ async def list_companies(page: Optional[int] = 1, per_page: Optional[int] = 30) 
     if per_page < 1 or per_page > 100:
         return {"error": "Page size must be between 1 and 100"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies"
+    url = f"https://{freshdesk_domain()}/api/v2/companies"
 
     params = {
         "page": page,
@@ -1569,7 +1598,7 @@ async def list_companies(page: Optional[int] = 1, per_page: Optional[int] = 30) 
     }
 
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1610,12 +1639,12 @@ async def create_company(company_data: Dict[str, Any]) -> Dict[str, Any]:
         
         validated_data = CompanyCreate(**company_data)
         request_data = validated_data.model_dump(exclude_none=True)
-    except Exception as e: # Pydantic's ValidationError
+    except ValidationError as e:
         return {"error": f"Validation error: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies"
+    url = f"https://{freshdesk_domain()}/api/v2/companies"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1636,9 +1665,9 @@ async def create_company(company_data: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def delete_company(company_id: int) -> Dict[str, Any]:
     """Delete a company in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies/{company_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/companies/{company_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json" # Though not strictly needed for DELETE, it's good practice
     }
 
@@ -1663,9 +1692,9 @@ async def delete_company(company_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def view_company(company_id: int) -> Dict[str, Any]:
     """Get a company in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies/{company_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/companies/{company_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1682,9 +1711,9 @@ async def view_company(company_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def search_companies(query: str) -> Dict[str, Any]:
     """Search for companies in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies/autocomplete"
+    url = f"https://{freshdesk_domain()}/api/v2/companies/autocomplete"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     # Use the name parameter as specified in the API
@@ -1703,9 +1732,9 @@ async def search_companies(query: str) -> Dict[str, Any]:
 @mcp.tool()
 async def find_company_by_name(name: str) -> Dict[str, Any]:
     """Find a company by name in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/companies/autocomplete"
+    url = f"https://{freshdesk_domain()}/api/v2/companies/autocomplete"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     params = {"name": name}
@@ -1732,9 +1761,9 @@ async def create_company_field(field_data: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e: # Pydantic's ValidationError
         return {"error": f"Validation error: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/company_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1755,9 +1784,9 @@ async def create_company_field(field_data: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def view_company_field(field_id: int) -> Dict[str, Any]:
     """View a specific custom company field in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_fields/{field_id}"
+    url = f"https://{freshdesk_domain()}/api/v2/company_fields/{field_id}"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
 
     async with httpx.AsyncClient() as client:
@@ -1787,9 +1816,9 @@ async def update_company_field(field_id: int, field_data: Dict[str, Any]) -> Dic
     except Exception as e: # Pydantic's ValidationError
         return {"error": f"Validation error: {str(e)}"}
 
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_field/{field_id}" # Singular 'company_field'
+    url = f"https://{freshdesk_domain()}/api/v2/company_field/{field_id}" # Singular 'company_field'
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1812,9 +1841,9 @@ async def delete_company_field(field_id: int) -> Dict[str, Any]:
     """Delete a custom company field in Freshdesk.
     Note: API path uses singular 'company_field'.
     """
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_field/{field_id}" # Singular 'company_field'
+    url = f"https://{freshdesk_domain()}/api/v2/company_field/{field_id}" # Singular 'company_field'
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}"
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}"
     }
 
     async with httpx.AsyncClient() as client:
@@ -1838,9 +1867,9 @@ async def delete_company_field(field_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def list_company_fields() -> List[Dict[str, Any]]:
     """List all company fields in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/company_fields"
+    url = f"https://{freshdesk_domain()}/api/v2/company_fields"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1857,9 +1886,9 @@ async def list_company_fields() -> List[Dict[str, Any]]:
 @mcp.tool()
 async def view_ticket_summary(ticket_id: int) -> Dict[str, Any]:
     """Get the summary of a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/summary"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}/summary"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
@@ -1876,9 +1905,9 @@ async def view_ticket_summary(ticket_id: int) -> Dict[str, Any]:
 @mcp.tool()
 async def update_ticket_summary(ticket_id: int, body: str) -> Dict[str, Any]:
     """Update the summary of a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/summary"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}/summary"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
     data = {
@@ -1898,9 +1927,9 @@ async def update_ticket_summary(ticket_id: int, body: str) -> Dict[str, Any]:
 @mcp.tool()
 async def delete_ticket_summary(ticket_id: int) -> Dict[str, Any]:
     """Delete the summary of a ticket in Freshdesk."""
-    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/summary"
+    url = f"https://{freshdesk_domain()}/api/v2/tickets/{ticket_id}/summary"
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f'{FRESHDESK_API_KEY}:X'.encode()).decode()}",
+        "Authorization": f"Basic {base64.b64encode(f'{freshdesk_api_key()}:X'.encode()).decode()}",
         "Content-Type": "application/json"
     }
 
