@@ -14,16 +14,52 @@ An MCP server implementation that integrates with Freshdesk, enabling AI models 
 
 This repository also ships a small CLI named `fd` that wraps the same underlying Freshdesk calls.
 
-Environment:
+### Install (this machine)
+
+Option A (recommended): install with pipx
+
+1. Install pipx (one-time):
+   - macOS (Homebrew): `brew install pipx && pipx ensurepath`
+2. Install `fd` from the repository:
+   - `pipx install "git+https://github.com/ivangrynenko/freshdesk_mcp.git"`
+
+Option B: install with Python user site
+
+1. `python3.11 -m pip install --user "git+https://github.com/ivangrynenko/freshdesk_mcp.git"`
+2. Ensure your PATH includes: `~/Library/Python/3.11/bin`
+
+To verify:
+- `fd --help`
+- `fd validate-env` (will exit non-zero until env vars are set)
+
+### Environment variables
+
+`fd` reads credentials from environment variables:
 - `FRESHDESK_DOMAIN` (example: `your-domain.freshdesk.com`)
 - `FRESHDESK_API_KEY`
 
-Examples:
+Recommendations for setting env vars:
+- In your shell profile (`~/.zshrc`): export the variables.
+- For per-project scoping: use `direnv` and a `.envrc` file.
+- For keeping secrets out of dotfiles: use 1Password CLI (`op`) or your macOS Keychain workflow to inject them at runtime.
+
+### Examples
+
 - `fd validate-env`
 - `fd tickets get 123 --json`
 - `fd tickets search "status:2 AND priority:3" --json`
 - `fd tickets reply 123 --body "Hello" --json`
 - `fd companies list --json`
+
+### Install on another machine
+
+Option A (pipx):
+- `brew install pipx && pipx ensurepath`
+- `pipx install "git+https://github.com/ivangrynenko/freshdesk_mcp.git"`
+
+Option B (Python user site):
+- `python3.11 -m pip install --user "git+https://github.com/ivangrynenko/freshdesk_mcp.git"`
+- Add `~/Library/Python/3.11/bin` to PATH
 
 ## Components
 
@@ -132,10 +168,11 @@ Set the following environment variables:
 
 ### Testing
 
-Run the test scripts to verify functionality:
+Run the test suite:
 
 ```bash
-python -m tests.test_search_functions
+python3.11 -m pip install -e '.[test]'
+pytest
 ```
 
 ## Getting Started
