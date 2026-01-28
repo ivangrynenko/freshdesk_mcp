@@ -37,11 +37,13 @@ async def test_get_agents():
     print(result)
 
 async def test_list_canned_responses():
-    result = await list_canned_responses()
+    folder_id = 12345678901  # Replace with a valid folder id
+    result = await list_canned_responses(folder_id)
     print(result)
 
 async def test_list_solution_articles():
-    result = await list_solution_articles()
+    folder_id = 12345678901  # Replace with a valid folder id
+    result = await list_solution_articles(folder_id)
     print(result)
 
 async def test_list_solution_folders():
@@ -132,42 +134,33 @@ async def test_search_tickets_basic():
 
 async def test_build_and_search():
     # Build a query for high priority open tickets
-    query_data = await build_search_query([
-        {"field": "status", "value": 2},
-        {"field": "priority", "value": 3}
-    ])
-    query = query_data.get("query")
+    status_part = build_search_query("status", 2)
+    priority_part = build_search_query("priority", 3)
+    query = build_complex_search_query(status_part, priority_part, operator="AND")
     print(f"Built query: {query}")
 
     # Use the built query to search
     result = await search_tickets(query)
-    print(f"Search results:")
+    print("Search results:")
     print(result)
+
 
 async def test_complex_search():
     # Build a complex query for (open OR pending) AND (high OR urgent)
-    query_data = await build_complex_search_query([
-        {
-            "conditions": [
-                {"field": "status", "value": 2},  # Open
-                {"field": "status", "value": 3}   # Pending
-            ],
-            "operator": "OR"
-        },
-        {
-            "conditions": [
-                {"field": "priority", "value": 3},  # High
-                {"field": "priority", "value": 4}   # Urgent
-            ],
-            "operator": "OR"
-        }
-    ])
-    query = query_data.get("query")
+    status_open = build_search_query("status", 2)
+    status_pending = build_search_query("status", 3)
+    priority_high = build_search_query("priority", 3)
+    priority_urgent = build_search_query("priority", 4)
+
+    unresolved_query = build_complex_search_query(status_open, status_pending, operator="OR")
+    priority_query = build_complex_search_query(priority_high, priority_urgent, operator="OR")
+
+    query = build_complex_search_query(unresolved_query, priority_query, operator="AND")
     print(f"Built complex query: {query}")
 
     # Use the built query to search
     result = await search_tickets(query)
-    print(f"Complex search results:")
+    print("Complex search results:")
     print(result)
 
 if __name__ == "__main__":

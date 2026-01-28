@@ -52,7 +52,7 @@ def _sample_args():
         "view_solution_article": (123,),
         "update_solution_article": (123, {"title": "Article2"}),
         "view_agent": (123,),
-        "create_agent": ({"contact": {"email": "agent@example.com"}},),
+        "create_agent": ({"email": "agent@example.com", "ticket_scope": 1},),
         "update_agent": (123, {"occasional": True}),
         "search_agents": ("email:'agent@example.com'",),
         "list_groups": (1, 2),

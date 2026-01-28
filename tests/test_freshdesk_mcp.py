@@ -4,7 +4,7 @@ import os
 from unittest.mock import patch, MagicMock
 import httpx
 
-from src.freshdesk_mcp.server import (
+from freshdesk_mcp.server import (
     create_ticket,
     get_ticket,
     update_ticket,
@@ -57,7 +57,6 @@ class TestFreshdeskMCP(unittest.TestCase):
         )
 
     @patch("httpx.AsyncClient")
-    @unittest.skipIf(not os.environ.get("FRESHDESK_API_KEY"), "API key not set")
     def test_search_tickets(self, mock_client):
         """Test search_tickets functionality"""
         # Mock the response
@@ -68,6 +67,9 @@ class TestFreshdeskMCP(unittest.TestCase):
         mock_client_instance = MagicMock()
         mock_client_instance.get.return_value = mock_response
         mock_client.return_value.__aenter__.return_value = mock_client_instance
+
+        os.environ["FRESHDESK_DOMAIN"] = "test-domain.freshdesk.com"
+        os.environ["FRESHDESK_API_KEY"] = "test_key"
 
         # Run the async test
         loop = asyncio.get_event_loop()
@@ -80,8 +82,7 @@ class TestFreshdeskMCP(unittest.TestCase):
 
         # Verify the query was properly formatted
         mock_client.get.assert_called_with(
-            'https://None/api/v2/search/tickets',
-            headers={'Content-Type': 'application/json'},
+            'https://test-domain.freshdesk.com/api/v2/search/tickets',
             params={'query': '"status:2"'}
         )
 
@@ -89,10 +90,11 @@ class TestFreshdeskMCP(unittest.TestCase):
         mock_client.reset_mock()
         await search_tickets("search term")
 
-        # Verify it searches in description and subject
-        self.assertTrue(
-            '"(description:"search term" OR subject:"search term")"' in
-            str(mock_client.get.call_args)
+        # Verify it searches in description and subject (single-quoted values, outer double quotes)
+        _, kwargs = mock_client.get.call_args
+        self.assertEqual(
+            kwargs["params"]["query"],
+            '"(description:\'search term\' OR subject:\'search term\')"',
         )
 
 if __name__ == '__main__':

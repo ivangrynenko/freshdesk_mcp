@@ -37,6 +37,10 @@ def validate_env() -> None:
         missing.append("FRESHDESK_API_KEY")
 
     if missing:
+        typer.echo(
+            f"Error: Missing required environment variables: {', '.join(missing)}",
+            err=True,
+        )
         raise typer.Exit(code=2)
 
 
