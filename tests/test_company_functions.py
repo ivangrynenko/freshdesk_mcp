@@ -5,6 +5,8 @@ import os
 import sys
 import asyncio
 
+import pytest
+
 # Add the parent directory to the path so we can import the module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.freshdesk_mcp.server import parse_link_header
@@ -143,6 +145,7 @@ class TestParseHeaderFunction(unittest.TestCase):
         self.assertEqual(result, {"next": None, "prev": None})
 
 # Define async test cases outside of unittest framework
+@pytest.mark.asyncio
 async def test_list_companies():
     result = await mock_list_companies(page=1, per_page=10)
 
@@ -154,6 +157,7 @@ async def test_list_companies():
     assert 'next_page' in result['pagination']
     print("✓ test_list_companies passed")
 
+@pytest.mark.asyncio
 async def test_view_company():
     result = await mock_view_company(51000641139)
 
@@ -162,6 +166,7 @@ async def test_view_company():
     assert result['domains'] == ['herbertsmithfreehills.com']
     print("✓ test_view_company passed")
 
+@pytest.mark.asyncio
 async def test_search_companies():
     result = await mock_search_companies("herbert")
 
@@ -170,6 +175,7 @@ async def test_search_companies():
     assert result[0]['name'] == 'Herbert Smith Freehills'
     print("✓ test_search_companies passed")
 
+@pytest.mark.asyncio
 async def test_list_company_fields():
     result = await mock_list_company_fields()
 

@@ -8,6 +8,22 @@ An MCP server implementation that integrates with Freshdesk, enabling AI models 
 - **Freshdesk Integration**: Seamless interaction with Freshdesk API endpoints
 - **AI Model Support**: Enables AI models to perform support operations through Freshdesk
 - **Automated Ticket Management**: Handle ticket creation, updates, and responses
+- **Advanced Search Capabilities**: Comprehensive ticket search with helper functions for complex queries
+
+## CLI
+
+This repository also ships a small CLI named `fd` that wraps the same underlying Freshdesk calls.
+
+Environment:
+- `FRESHDESK_DOMAIN` (example: `your-domain.freshdesk.com`)
+- `FRESHDESK_API_KEY`
+
+Examples:
+- `fd validate-env`
+- `fd tickets get 123 --json`
+- `fd tickets search "status:2 AND priority:3" --json`
+- `fd tickets reply 123 --body "Hello" --json`
+- `fd companies list --json`
 
 ## Components
 
@@ -15,136 +31,112 @@ An MCP server implementation that integrates with Freshdesk, enabling AI models 
 
 The server offers several tools for Freshdesk operations:
 
-- `create_ticket`: Create new support tickets
-  - **Inputs**:
-    - `subject` (string, required): Ticket subject
-    - `description` (string, required): Ticket description
-    - `source` (number, required): Ticket source code
-    - `priority` (number, required): Ticket priority level
-    - `status` (number, required): Ticket status code
-    - `email` (string, optional): Email of the requester
-    - `requester_id` (number, optional): ID of the requester
-    - `custom_fields` (object, optional): Custom fields to set on the ticket
-    - `additional_fields` (object, optional): Additional top-level fields
+- `create_ticket`: Create new tickets in Freshdesk
+- `get_ticket`: Retrieve detailed information about a specific ticket
+- `update_ticket`: Update ticket properties and fields
+- `get_ticket_conversation`: Retrieve the conversation thread for a ticket
+- `update_ticket_conversation`: Add notes or replies to ticket conversations
+- `search_tickets`: Search for tickets using Freshdesk's query syntax
 
-- `update_ticket`: Update existing tickets
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket to update
-    - `ticket_fields` (object, required): Fields to update
+### Ticket Search Functionality
 
-- `delete_ticket`: Delete a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket to delete
+The ticket search functionality allows searching for Freshdesk tickets using specific query syntax:
 
-- `search_tickets`: Search for tickets based on criteria
-  - **Inputs**:
-    - `query` (string, required): Search query string
+#### Search Query Format
 
-- `get_ticket_fields`: Get all ticket fields
-  - **Inputs**:
-    - None
+Freshdesk requires a specific format for search queries:
 
-- `get_tickets`: Get all tickets
-  - **Inputs**:
-    - `page` (number, optional): Page number to fetch
-    - `per_page` (number, optional): Number of tickets per page
+- Format: `"field_name:value AND/OR field_name:'value'"`
+- String values must be enclosed in single quotes
+- Numeric values should not have quotes
+- Boolean values should be `true` or `false` without quotes
+- Logical operators (`AND`, `OR`) must be uppercase
+- Parentheses can be used to group conditions
+- Spaces are required between different conditions and operators
 
-- `get_ticket`: Get a single ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket to get
+#### Supported Search Fields
 
-- `get_ticket_conversation`: Get conversation for a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
+Common fields that can be used in searches:
 
-- `create_ticket_reply`: Reply to a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
-    - `body` (string, required): Content of the reply
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| status | integer | Status of the ticket (2=Open, 3=Pending, etc.) |
+| priority | integer | Priority of the ticket (1=Low to 4=Urgent) |
+| type | string | Type of the ticket ('Question', 'Problem', etc.) |
+| tag | string | Tag associated with the ticket |
+| agent_id | integer | ID of the agent assigned to the ticket |
+| group_id | integer | ID of the group assigned to the ticket |
+| created_at | date | Creation date (YYYY-MM-DD) |
+| updated_at | date | Last updated date (YYYY-MM-DD) |
+| due_by | date | Due date (YYYY-MM-DD) |
+| description | string | Text in the ticket description |
+| subject | string | Text in the ticket subject |
+| cf_* | varies | Custom fields (prefix with cf_) |
 
-- `create_ticket_note`: Add a note to a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
-    - `body` (string, required): Content of the note
+#### Search Helper Functions
 
-- `update_ticket_conversation`: Update a conversation
-  - **Inputs**:
-    - `conversation_id` (number, required): ID of the conversation
-    - `body` (string, required): Updated content
+For convenient search query construction, the following helper functions are provided:
 
-- `view_ticket_summary`: Get the summary of a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
+- `build_search_query(field, value, operator)`: Creates a properly formatted search query part
+- `build_complex_search_query(*parts, operator)`: Combines multiple query parts into a complex query
+- `search_tickets_help()`: Provides detailed documentation on Freshdesk's search query syntax
 
-- `update_ticket_summary`: Update the summary of a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
-    - `body` (string, required): New summary content
+#### Example Usage
 
-- `delete_ticket_summary`: Delete the summary of a ticket
-  - **Inputs**:
-    - `ticket_id` (number, required): ID of the ticket
+```python
+# Simple search for open tickets
+search_tickets("status:2")
 
-- `get_agents`: Get all agents
-  - **Inputs**:
-    - `page` (number, optional): Page number
-    - `per_page` (number, optional): Number of agents per page
+# Search for high priority open tickets
+search_tickets("priority:3 AND status:2")
 
-- `view_agent`: Get a single agent
-  - **Inputs**:
-    - `agent_id` (number, required): ID of the agent
+# Search for tickets with a specific tag
+search_tickets("tag:'urgent'")
 
-- `create_agent`: Create a new agent
-  - **Inputs**:
-    - `agent_fields` (object, required): Agent details
+# Free text search (will automatically search in subject and description)
+search_tickets("payment issue")
 
-- `update_agent`: Update an agent
-  - **Inputs**:
-    - `agent_id` (number, required): ID of the agent
-    - `agent_fields` (object, required): Fields to update
+# Using the helper function to build query parts
+status_part = build_search_query("status", 2)  # Returns: status:2
+priority_part = build_search_query("priority", 3)  # Returns: priority:3
+type_part = build_search_query("type", "Question")  # Returns: type:'Question'
+date_part = build_search_query("created_at", "2023-01-01", ">")  # Returns: created_at:>'2023-01-01'
 
-- `search_agents`: Search for agents
-  - **Inputs**:
-    - `query` (string, required): Search query
+# Combine parts into a complex query
+complex_query = build_complex_search_query(status_part, priority_part, operator="AND")
+# Returns: (status:2 AND priority:3)
 
-- `list_contacts`: Get all contacts
-  - **Inputs**:
-    - `page` (number, optional): Page number
-    - `per_page` (number, optional): Contacts per page
+# Search with the complex query
+search_result = await search_tickets(complex_query)
+```
 
-- `get_contact`: Get a single contact
-  - **Inputs**:
-    - `contact_id` (number, required): ID of the contact
+## Configuration
 
-- `search_contacts`: Search for contacts
-  - **Inputs**:
-    - `query` (string, required): Search query
+To use this server, you'll need:
 
-- `update_contact`: Update a contact
-  - **Inputs**:
-    - `contact_id` (number, required): ID of the contact
-    - `contact_fields` (object, required): Fields to update
+1. A Freshdesk account
+2. Freshdesk API key
+3. Freshdesk domain
 
-- `list_companies`: Get all companies
-  - **Inputs**:
-    - `page` (number, optional): Page number
-    - `per_page` (number, optional): Companies per page
+Set the following environment variables:
+- `FRESHDESK_API_KEY`: Your Freshdesk API key
+- `FRESHDESK_DOMAIN`: Your Freshdesk domain (e.g., `company.freshdesk.com`)
 
-- `view_company`: Get a single company
-  - **Inputs**:
-    - `company_id` (number, required): ID of the company
+## Development
 
-- `search_companies`: Search for companies
-  - **Inputs**:
-    - `query` (string, required): Search query
+### Setup
 
-- `find_company_by_name`: Find a company by name
-  - **Inputs**:
-    - `name` (string, required): Company name
+1. Clone the repository
+2. Install dependencies
+3. Set up environment variables for Freshdesk
 
-- `list_company_fields`: Get all company fields
-  - **Inputs**:
-    - None
+### Testing
+
+Run the test scripts to verify functionality:
+
+```bash
+python -m tests.test_search_functions
+```
 
 ## Getting Started
 
@@ -200,6 +192,38 @@ Once configured, you can ask Claude to perform operations like:
 - "List all high-priority tickets assigned to the agent John Doe"
 - "List previous tickets of customer A101 in last 30 days"
 
+### Search Examples
+
+- "Find all open tickets with high or urgent priority created after January 1st"
+  ```python
+  search_tickets("status:2 AND priority:>2 AND created_at:>'2023-01-01'")
+  ```
+
+- "Find tickets with tag 'billing' that are in pending status"
+  ```python
+  search_tickets("tag:'billing' AND status:3")
+  ```
+
+- "Find tickets with 'payment' mentioned in their subject or description"
+  ```python
+  search_tickets("payment")  # Free text search in subject and description
+  ```
+
+- "Find tickets created in the last month that have not been resolved"
+  ```python
+  # Using helper functions to build a more complex query
+  unresolved = build_complex_search_query(
+    build_search_query("status", 2),  # Open
+    build_search_query("status", 3),  # Pending
+    build_search_query("status", 6),  # Waiting on Customer
+    operator="OR"
+  )
+  last_month = build_search_query("created_at", "2023-05-01", ">")  # Adjust date as needed
+
+  # Combine the parts
+  query = build_complex_search_query(unresolved, last_month, operator="AND")
+  search_tickets(query)
+  ```
 
 ## Testing
 
@@ -215,6 +239,7 @@ uvx freshdesk-mcp --env FRESHDESK_API_KEY=<your_api_key> --env FRESHDESK_DOMAIN=
 - Ensure proper network connectivity to Freshdesk servers
 - Check API rate limits and quotas
 - Verify the `uvx` command is available in your PATH
+- For search query issues, use the helper functions or refer to the search syntax examples
 
 ## License
 
